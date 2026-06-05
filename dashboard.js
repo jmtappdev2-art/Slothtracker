@@ -387,8 +387,7 @@ async function renderOverview() {
   // Hero
   const hour = new Date().getHours();
   const name = settings.name ? `, ${settings.name}` : '';
-  document.getElementById('overviewGreet').textContent = (hour<12?'Good morning':'hour<17?Good afternoon':'Good evening') + name + ' 👋';
-  document.getElementById('overviewGreet').textContent = `${hour<12?'Good morning':hour<17?'Good afternoon':'Good evening'}${name} 👋`;
+  document.getElementById('overviewGreet').textContent = (hour<12?'Good morning':hour<17?'Good afternoon':'Good evening') + name + ' 👋';
 
   document.getElementById('heroStageBadge').textContent = stage.name;
   document.getElementById('heroFocusTime').textContent = fmtMins(todayMins);
@@ -601,7 +600,7 @@ async function renderCategories(){
     <div class="cat-editor-card">
       <div class="cat-card-top">
         <div class="cat-color-swatch" style="background:${cat.color};cursor:${cat.locked?'default':'pointer'}" data-catid="${cat.id}"></div>
-        <input class="cat-name-input" value="${cat.label}" data-catid="${cat.id}" ${cat.locked?'disabled':''}><br/>
+        <input class="cat-name-input" value="${cat.label}" data-catid="${cat.id}" ${cat.locked?'disabled':''}>
         ${!cat.locked?`<button class="cat-delete-btn" data-catid="${cat.id}">✕</button>`:''}
       </div>
       <div class="cat-stat" style="color:${cat.color}">${fmtSecs(catTotals[cat.id]||0)}</div>

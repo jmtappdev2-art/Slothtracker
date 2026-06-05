@@ -6,14 +6,12 @@
 const store = {
   async get(keys) {
     const result = {};
-    const keyList = Array.isArray(keys) ? keys : [keys];
-    for (const k of keyList) {
-      try { const raw = localStorage.getItem('st_' + k); result[k] = raw !== null ? JSON.parse(raw) : undefined; } catch { result[k] = undefined; }
-    }
+    const kl = Array.isArray(keys) ? keys : [keys];
+    for (const k of kl) { try { const r = localStorage.getItem('st_'+k); result[k] = r !== null ? JSON.parse(r) : undefined; } catch { result[k] = undefined; } }
     return result;
   },
-  async set(obj) { for (const [k,v] of Object.entries(obj)) { try { localStorage.setItem('st_' + k, JSON.stringify(v)); } catch {} } },
-  async remove(keys) { const kl = Array.isArray(keys) ? keys : [keys]; for (const k of kl) localStorage.removeItem('st_' + k); },
+  async set(obj) { for (const [k,v] of Object.entries(obj)) { try { localStorage.setItem('st_'+k, JSON.stringify(v)); } catch {} } },
+  async remove(keys) { const kl = Array.isArray(keys) ? keys : [keys]; for (const k of kl) localStorage.removeItem('st_'+k); },
   async clear() { const r=[]; for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('st_'))r.push(k);} r.forEach(k=>localStorage.removeItem(k)); }
 };
 
@@ -30,16 +28,45 @@ const DEFAULT_CATEGORIES = [
 const PALETTE = ['#6B9E4E','#818cf8','#f59e0b','#38bdf8','#f472b6','#a78bfa','#34d399','#60a5fa','#fb923c','#e879f9','#4ade80','#f87171','#facc15','#94a3b8','#fb7185'];
 let CATEGORIES = [...DEFAULT_CATEGORIES];
 
+const QUOTES = [
+  '"Slow and steady focus."','"One session at a time."','"Consistency beats intensity."',
+  '"Small steps, big results."','"Progress, not perfection."','"Every minute counts."',
+  '"Build momentum gently."','"Depth over speed."','"Show up. Do the work."','"Rest is part of progress."'
+];
+
+// ─── Progression System ──────────────────────────────────────
+const STAGES = [
+  { name:'🌱 Seedling',      minMins:0,    nextMins:60,   msg:'Plant your first seed of focus.' },
+  { name:'🌿 Young Tree',    minMins:60,   nextMins:180,  msg:'You\'re growing steadily.' },
+  { name:'🌲 Growing Tree',  minMins:180,  nextMins:420,  msg:'Your roots are deepening.' },
+  { name:'🌳 Large Tree',    minMins:420,  nextMins:840,  msg:'Remarkable consistency.' },
+  { name:'🏡 Treehouse',     minMins:840,  nextMins:1680, msg:'Your sloth has a home!' },
+  { name:'🌲🌳🌿 Forest',   minMins:1680, nextMins:null, msg:'You\'ve built a whole forest.' },
+];
+
+function getStage(totalMins) {
+  for (let i = STAGES.length-1; i >= 0; i--) { if (totalMins >= STAGES[i].minMins) return { ...STAGES[i], idx: i }; }
+  return { ...STAGES[0], idx: 0 };
+}
+
+function calcStreak(manualTasks) {
+  const today = getTodayKey();
+  const daySet = new Set(manualTasks.map(t => t.date));
+  let streak = 0, d = new Date();
+  // count today too
+  for (let i = 0; i < 365; i++) {
+    const key = localKey(d);
+    if (daySet.has(key)) { streak++; d.setDate(d.getDate()-1); }
+    else if (i === 0) { d.setDate(d.getDate()-1); } // today empty is ok, check yesterday
+    else break;
+  }
+  return streak;
+}
+
 // ─── Utilities ───────────────────────────────────────────────
-function fmtSecs(s) {
-  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
-  if(h>0)return`${h}h ${m}m`;if(m>0)return`${m}m ${ss}s`;return`${ss}s`;
-}
-function fmtTimer(s) {
-  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
-  if(h>0)return`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
-  return`${m}:${String(ss).padStart(2,'0')}`;
-}
+function fmtSecs(s) { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; if(h>0)return`${h}h ${m}m`; if(m>0)return`${m}m ${ss}s`; return`${ss}s`; }
+function fmtMins(m) { if(m>=60){const h=Math.floor(m/60),rm=m%60;return rm>0?`${h}h ${rm}m`:`${h}h`;} return`${m}m`; }
+function fmtTimer(s) { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; if(h>0)return`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`; return`${m}:${String(ss).padStart(2,'0')}`; }
 function uid() { return 'id_'+Math.random().toString(36).slice(2,9); }
 function localKey(d) { return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function getTodayKey() { return localKey(new Date()); }
@@ -51,7 +78,14 @@ function getDateRange(range) {
   return keys;
 }
 function getCat(id) { return CATEGORIES.find(c=>c.id===id)||CATEGORIES[0]; }
-function aggregateLogs(logs,dateKeys) { const t={};for(const k of dateKeys)for(const[d,s]of Object.entries(logs[k]||{}))t[d]=(t[d]||0)+s;return t; }
+function aggregateLogs(logs,dateKeys) { const t={};for(const k of dateKeys)for(const[d,s]of Object.entries(logs[k]||{}))t[d]=(t[d]||0)+s; return t; }
+
+// ─── Settings ────────────────────────────────────────────────
+async function getSettings() {
+  const r = await store.get('settings');
+  return r.settings || { name: '', dailyGoalMins: 120, sessionLengthMins: 25 };
+}
+async function saveSettings(s) { await store.set({ settings: s }); }
 
 // ─── Storage helpers ─────────────────────────────────────────
 async function getData() { return store.get(['logs','domainCategories','sessions','categories','manualTasks','todoItems']); }
@@ -63,9 +97,48 @@ async function deleteManualTask(id) { const t=await getManualTasks();await store
 async function getTodoItems() { const r=await store.get('todoItems');return r.todoItems||[]; }
 async function saveTodoItems(items) { await store.set({todoItems:items}); }
 
-// ─── Active Task Timer ───────────────────────────────────────
-let activeTask = null;   // { id, title, catId, startTime }
+// ─── Sloth SVG ───────────────────────────────────────────────
+function buildSlothSVG(state='idle', size=90) {
+  const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
+  const eyesClosed = state === 'idle';
+  const celebrating = state === 'celebrate';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 105" class="${animClass}" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="50" cy="72" rx="24" ry="20" fill="#C4A882"/>
+    <circle cx="50" cy="40" r="22" fill="#C4A882"/>
+    <ellipse cx="50" cy="45" rx="13" ry="11" fill="#E8D4BC"/>
+    <circle cx="28" cy="28" r="9" fill="#A08060"/>
+    <circle cx="28" cy="28" r="6" fill="#C4A882"/>
+    <circle cx="72" cy="28" r="9" fill="#A08060"/>
+    <circle cx="72" cy="28" r="6" fill="#C4A882"/>
+    ${eyesClosed
+      ? '<line x1="38" y1="39" x2="46" y2="39" stroke="#5C3D1E" stroke-width="2.5" stroke-linecap="round"/><line x1="54" y1="39" x2="62" y2="39" stroke="#5C3D1E" stroke-width="2.5" stroke-linecap="round"/>'
+      : '<circle cx="42" cy="39" r="5" fill="#5C3D1E"/><circle cx="58" cy="39" r="5" fill="#5C3D1E"/><circle cx="40" cy="37" r="2" fill="white" opacity="0.7"/><circle cx="56" cy="37" r="2" fill="white" opacity="0.7"/>'}
+    <ellipse cx="50" cy="47" rx="3" ry="2" fill="#8B6340"/>
+    ${celebrating
+      ? '<path d="M43,52 Q50,59 57,52" stroke="#8B6340" stroke-width="2" fill="none" stroke-linecap="round"/>'
+      : state==='active'
+        ? '<circle cx="50" cy="52" r="3" fill="#8B6340" opacity="0.5"/>'
+        : '<path d="M44,52 Q50,56 56,52" stroke="#8B6340" stroke-width="1.5" fill="none" stroke-linecap="round"/>'}
+    <ellipse cx="22" cy="68" rx="8" ry="16" fill="#A08060" transform="rotate(${celebrating?-50:state==='active'?-20:12} 22 68)"/>
+    <ellipse cx="78" cy="68" rx="8" ry="16" fill="#A08060" transform="rotate(${celebrating?50:state==='active'?20:-12} 78 68)"/>
+    <line x1="15" y1="83" x2="11" y2="90" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="19" y1="85" x2="16" y2="92" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="85" y1="83" x2="89" y2="90" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="81" y1="85" x2="84" y2="92" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
+    ${celebrating ? '<text x="64" y="18" font-size="14">✨</text><text x="18" y="22" font-size="12">⭐</text><text x="70" y="35" font-size="10">🎉</text>' : ''}
+  </svg>`;
+}
+
+function setSloth(wrapperId, state, size) {
+  const el = document.getElementById(wrapperId);
+  if (el) el.innerHTML = buildSlothSVG(state, size);
+}
+
+// ─── Active Task & Focus Screen ──────────────────────────────
+let activeTask = null;
 let timerInterval = null;
+let focusScreenOpen = false;
+let focusSessionCount = 0;
 
 async function loadActiveTask() {
   const r = await store.get('activeTask');
@@ -76,34 +149,49 @@ async function loadActiveTask() {
 async function saveActiveTask() { await store.set({activeTask}); }
 
 function updateBanner() {
-  setHeroSloth(activeTask ? 'active' : 'idle');
+  const allIdle = !activeTask;
+  setSloth('heroSlothWrap', allIdle ? 'idle' : 'active', 100);
+  setSloth('companionSlothWrap', allIdle ? 'idle' : 'active', 72);
   const banner = document.getElementById('activeTaskBanner');
   if (!activeTask) { banner.classList.remove('visible'); return; }
   banner.classList.add('visible');
   document.getElementById('bannerTaskName').textContent = activeTask.title;
   updateBannerTime();
 }
+
 function updateBannerTime() {
   if (!activeTask) return;
   const elapsed = Math.round((Date.now() - activeTask.startTime) / 1000);
   document.getElementById('bannerTimer').textContent = fmtTimer(elapsed);
+  // Also update focus screen if open
+  if (focusScreenOpen) {
+    document.getElementById('focusTimerDisplay').textContent = fmtTimer(elapsed);
+    // Progress toward session goal
+    const settings = _cachedSettings || { sessionLengthMins: 25 };
+    const goalSecs = (settings.sessionLengthMins || 25) * 60;
+    const pct = Math.min(100, (elapsed / goalSecs) * 100);
+    document.getElementById('focusProgressFill').style.width = pct + '%';
+  }
 }
+
 function startTimerTick() {
   if (timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(updateBannerTime, 1000);
 }
 
+let _cachedSettings = null;
+
 async function startTask(todoId) {
-  // Stop any existing task first
   if (activeTask) await stopTask(false);
   const items = await getTodoItems();
-  const item = items.find(i=>i.id===todoId);
+  const item = items.find(i => i.id === todoId);
   if (!item) return;
   activeTask = { id: todoId, title: item.title, catId: item.catId, startTime: Date.now() };
   await saveActiveTask();
   updateBanner();
   startTimerTick();
   renderTodo();
+  openFocusScreen(item.title);
 }
 
 async function stopTask(log=true) {
@@ -113,25 +201,67 @@ async function stopTask(log=true) {
     if (duration >= 5) {
       const now = new Date(activeTask.startTime);
       const startTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-      const date = localKey(now);
-      await saveManualTask({ id:uid(), title:activeTask.title, catId:activeTask.catId, date, startTime, duration, notes:'via To-Do timer', createdAt:Date.now() });
+      await saveManualTask({ id:uid(), title:activeTask.title, catId:activeTask.catId, date:localKey(now), startTime, duration, notes:'via To-Do timer', createdAt:Date.now() });
+      focusSessionCount++;
     }
   }
   activeTask = null;
   await store.remove('activeTask');
-  setHeroSloth('celebrate');
-  setTimeout(() => setHeroSloth('idle'), 2200);
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  closeFocusScreen();
+  // Celebrate
+  setSloth('heroSlothWrap', 'celebrate', 100);
+  setSloth('companionSlothWrap', 'celebrate', 72);
+  setTimeout(() => {
+    setSloth('heroSlothWrap', 'idle', 100);
+    setSloth('companionSlothWrap', 'idle', 72);
+  }, 2500);
   updateBanner();
   renderTodo();
+  // Refresh overview if visible
+  const active = document.querySelector('.nav-item.active')?.getAttribute('data-section');
+  if (active === 'overview') renderOverview();
 }
 
+// ─── Focus Screen ─────────────────────────────────────────────
+function openFocusScreen(taskName) {
+  focusScreenOpen = true;
+  document.getElementById('focusScreen').classList.add('visible');
+  document.getElementById('focusTaskName').textContent = taskName || 'Focus Session';
+  document.getElementById('focusSessionNum').textContent = focusSessionCount + 1;
+  document.getElementById('focusProgressFill').style.width = '0%';
+  setSloth('focusSlothWrap', 'active', 110);
+  const q = QUOTES[Math.floor(Math.random()*QUOTES.length)];
+  document.getElementById('focusQuote').textContent = q;
+}
+
+function closeFocusScreen() {
+  focusScreenOpen = false;
+  document.getElementById('focusScreen').classList.remove('visible');
+}
+
+document.getElementById('focusDoneBtn').addEventListener('click', () => stopTask(true));
+document.getElementById('focusCancelBtn').addEventListener('click', async () => {
+  await stopTask(false);
+});
 document.getElementById('bannerStopBtn').addEventListener('click', () => stopTask(true));
+
+// Hero buttons
+document.getElementById('heroFocusBtn').addEventListener('click', async () => {
+  // Open to-do to pick a task, or start a generic session
+  const items = await getTodoItems();
+  const pending = items.filter(i => !i.completed && i.source !== 'flagged');
+  if (pending.length > 0) {
+    showSection('todo');
+  } else {
+    showSection('todo');
+  }
+});
+document.getElementById('heroLogBtn').addEventListener('click', () => showSection('timeline'));
 
 // ─── Sidebar ─────────────────────────────────────────────────
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
-const mainContent = document.getElementById('mainContent');
 const mobileMenuBtn = document.getElementById('mobileMenuBtn');
 const sidebarOverlay = document.getElementById('sidebarOverlay');
 
@@ -144,104 +274,200 @@ sidebarToggle.addEventListener('click', () => {
   sidebarToggle.textContent = sidebarCollapsed ? '›' : '‹';
   localStorage.setItem('st_sidebarCollapsed', sidebarCollapsed ? '1' : '0');
 });
-
-mobileMenuBtn.addEventListener('click', () => {
-  sidebar.classList.add('mobile-open');
-  sidebarOverlay.classList.add('visible');
-});
-sidebarOverlay.addEventListener('click', () => {
-  sidebar.classList.remove('mobile-open');
-  sidebarOverlay.classList.remove('visible');
-});
-
-// Close sidebar on mobile nav click
+mobileMenuBtn.addEventListener('click', () => { sidebar.classList.add('mobile-open'); sidebarOverlay.classList.add('visible'); });
+sidebarOverlay.addEventListener('click', () => { sidebar.classList.remove('mobile-open'); sidebarOverlay.classList.remove('visible'); });
 document.querySelectorAll('.nav-item').forEach(el => {
   el.addEventListener('click', () => {
-    if (window.innerWidth <= 768) {
-      sidebar.classList.remove('mobile-open');
-      sidebarOverlay.classList.remove('visible');
-    }
+    if (window.innerWidth <= 768) { sidebar.classList.remove('mobile-open'); sidebarOverlay.classList.remove('visible'); }
   });
 });
 
-// ─── Charts (native Canvas) ──────────────────────────────────
-function drawDoughnut(canvasId, segments) {
+// ─── Momentum Line Chart ──────────────────────────────────────
+function drawLineChart(canvasId, labels, data, todayIdx) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const W = canvas.offsetWidth||240, H = canvas.offsetHeight||210;
+  const W = canvas.offsetWidth||300, H = canvas.offsetHeight||180;
   canvas.width = W*devicePixelRatio; canvas.height = H*devicePixelRatio;
   ctx.scale(devicePixelRatio, devicePixelRatio);
   ctx.clearRect(0,0,W,H);
-  const total = segments.reduce((s,sg)=>s+sg.value,0);
-  if (!total) { ctx.fillStyle='#EDE8E0';ctx.beginPath();ctx.arc(W*0.38,H/2,Math.min(W*0.34,H*0.42),0,Math.PI*2);ctx.fill();return; }
-  const cx=W*0.37,cy=H/2,outerR=Math.min(W*0.34,H*0.42),innerR=outerR*0.62;
-  let angle=-Math.PI/2;
-  for(const sg of segments){
-    const sweep=(sg.value/total)*Math.PI*2;
-    ctx.beginPath();ctx.moveTo(cx+outerR*Math.cos(angle),cy+outerR*Math.sin(angle));
-    ctx.arc(cx,cy,outerR,angle,angle+sweep);ctx.arc(cx,cy,innerR,angle+sweep,angle,true);ctx.closePath();
-    ctx.fillStyle=sg.color+'cc';ctx.strokeStyle=sg.color;ctx.lineWidth=1.5;ctx.fill();ctx.stroke();
-    angle+=sweep;
-  }
-  const legendX=cx+outerR+16;let legendY=cy-(segments.length*16)/2+7;
-  ctx.font=`500 11px Inter,sans-serif`;
-  for(const sg of segments){
-    ctx.fillStyle=sg.color;ctx.fillRect(legendX,legendY-6,10,10);
-    ctx.fillStyle='#6B7280';ctx.textAlign='left';ctx.fillText(sg.label,legendX+14,legendY+3);legendY+=18;
-  }
-}
 
-function drawBarChart(canvasId,labels,data,todayIdx){
-  const canvas=document.getElementById(canvasId);if(!canvas)return;
-  const ctx=canvas.getContext('2d');const W=canvas.offsetWidth||300,H=canvas.offsetHeight||210;
-  canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;ctx.scale(devicePixelRatio,devicePixelRatio);ctx.clearRect(0,0,W,H);
-  const padL=28,padR=10,padT=14,padB=32,chartW=W-padL-padR,chartH=H-padT-padB;
-  const maxVal=Math.max(...data,1),barW=(chartW/data.length)*0.6,gap=chartW/data.length;
-  ctx.strokeStyle='#EDE8E0';ctx.lineWidth=1;
-  for(let i=0;i<=4;i++){const y=padT+chartH-(i/4)*chartH;ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+chartW,y);ctx.stroke();ctx.fillStyle='#6B7280';ctx.font='10px Inter,sans-serif';ctx.textAlign='right';ctx.fillText(Math.round((i/4)*maxVal)+'m',padL-4,y+3);}
-  data.forEach((val,i)=>{
-    const barH=(val/maxVal)*chartH,x=padL+i*gap+(gap-barW)/2,y=padT+chartH-barH,isToday=i===todayIdx,r=Math.min(4,barH/2);
-    ctx.fillStyle=isToday?'#6B9E4Ecc':'#2D501622';ctx.strokeStyle=isToday?'#6B9E4E':'#2D501655';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+barW-r,y);ctx.quadraticCurveTo(x+barW,y,x+barW,y+r);ctx.lineTo(x+barW,y+barH);ctx.lineTo(x,y+barH);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();ctx.fill();ctx.stroke();
-    ctx.fillStyle='#6B7280';ctx.font='10px Inter,sans-serif';ctx.textAlign='center';ctx.fillText(labels[i],x+barW/2,H-padB+14);
+  const padL=36, padR=16, padT=12, padB=36;
+  const chartW=W-padL-padR, chartH=H-padT-padB;
+  const maxVal = Math.max(...data, 1);
+  const pts = data.map((v,i) => ({ x: padL + (i/(data.length-1))*chartW, y: padT + chartH - (v/maxVal)*chartH }));
+
+  // Grid
+  ctx.strokeStyle='#EDE8E0'; ctx.lineWidth=1;
+  for (let i=0; i<=3; i++) {
+    const y = padT + (i/3)*chartH;
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+chartW,y); ctx.stroke();
+    ctx.fillStyle='#9CA3AF'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='right';
+    ctx.fillText(Math.round(((3-i)/3)*maxVal)+'m', padL-4, y+3);
+  }
+
+  // Area fill
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, padT+chartH);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, padT+chartH);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, padT, 0, padT+chartH);
+  grad.addColorStop(0, 'rgba(107,158,78,0.18)');
+  grad.addColorStop(1, 'rgba(107,158,78,0.01)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p,i) => i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle='#6B9E4E'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.stroke();
+
+  // Dots
+  pts.forEach((p,i) => {
+    const isToday = i===todayIdx;
+    ctx.beginPath(); ctx.arc(p.x, p.y, isToday?5:3.5, 0, Math.PI*2);
+    ctx.fillStyle = isToday ? '#E8A020' : '#6B9E4E'; ctx.fill();
+    if (isToday) { ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
+    ctx.fillStyle='#6B7280'; ctx.font=`${isToday?'700':'400'} 10px Inter,sans-serif`;
+    ctx.textAlign='center'; ctx.fillText(labels[i], p.x, H-padB+14);
+    if (data[i]>0) { ctx.fillStyle=isToday?'#E8A020':'#6B9E4E'; ctx.font='bold 9px Inter,sans-serif'; ctx.fillText(data[i]+'m', p.x, p.y-8); }
   });
 }
 
-// ─── Overview ────────────────────────────────────────────────
-let currentRange='today';
-async function renderOverview(){
-  const{logs,domainCategories,manualTasks}=await getData();
-  const dc=domainCategories||{};const dateKeys=getDateRange(currentRange);
-  const totals=aggregateLogs(logs||{},dateKeys);const entries=Object.entries(totals).sort((a,b)=>b[1]-a[1]);
-  const tasksInRange=(manualTasks||[]).filter(t=>dateKeys.includes(t.date));
-  let totalSecs=entries.reduce((s,[,v])=>s+v,0)+tasksInRange.reduce((s,t)=>s+t.duration,0);
-  const todoItems=await getTodoItems();
-  const doneToday=todoItems.filter(t=>t.completedDate===getTodayKey()).length;
+// ─── Category Cards ───────────────────────────────────────────
+function renderCatCards(catTotals, container) {
+  const cats = CATEGORIES.filter(c=>catTotals[c.id]>0).sort((a,b)=>(catTotals[b.id]||0)-(catTotals[a.id]||0));
+  const total = Object.values(catTotals).reduce((a,b)=>a+b,0)||1;
+  if (!cats.length) {
+    container.innerHTML=`<div class="cat-empty"><div class="cat-empty-icon">🌿</div><div>No focus sessions logged yet.<br>Your sloth is waiting for its first climb.</div></div>`;
+    return;
+  }
+  container.innerHTML=`<div class="cat-cards-grid">${cats.map(cat=>{
+    const secs=catTotals[cat.id]||0, pct=Math.round((secs/total)*100);
+    return`<div class="cat-card">
+      <div class="cat-card-dot" style="background:${cat.color}"></div>
+      <div class="cat-card-info">
+        <div class="cat-card-name">${cat.label}</div>
+        <div class="cat-card-bar-wrap"><div class="cat-card-bar" style="width:${pct}%;background:${cat.color}"></div></div>
+      </div>
+      <div class="cat-card-time">${fmtSecs(secs)}</div>
+      <div class="cat-card-pct">${pct}%</div>
+    </div>`;
+  }).join('')}</div>`;
+}
 
-  document.getElementById('statTotal').textContent=fmtSecs(totalSecs);
-  document.getElementById('statSites').textContent=doneToday;
-  const catTotals={};
-  for(const[d,s]of entries){const c=dc[d]||'uncategorised';catTotals[c]=(catTotals[c]||0)+s;}
-  for(const t of tasksInRange){catTotals[t.catId]=(catTotals[t.catId]||0)+t.duration;}
-  const topCat=Object.entries(catTotals).sort((a,b)=>b[1]-a[1])[0];
-  if(topCat){const cat=getCat(topCat[0]);document.getElementById('statTopCat').textContent=cat.label;document.getElementById('statTopCatTime').textContent=fmtSecs(topCat[1]);}
-  else{document.getElementById('statTopCat').textContent='—';document.getElementById('statTopCatTime').textContent='—';}
-  if(entries[0]){document.getElementById('statTopSite').textContent=entries[0][0];document.getElementById('statTopSiteTime').textContent=fmtSecs(entries[0][1]);}
-  else{document.getElementById('statTopSite').textContent='—';document.getElementById('statTopSiteTime').textContent='—';}
-  document.getElementById('statTotalSub').textContent={today:'today',week:'this week',month:'this month'}[currentRange];
-  const hour=new Date().getHours();
-  document.getElementById('overviewGreet').textContent=hour<12?'Good morning 👋':hour<17?'Good afternoon 👋':'Good evening 👋';
-  document.getElementById('overviewSub').textContent='Here\'s your focus summary for '+new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const segs=CATEGORIES.filter(c=>catTotals[c.id]>0).map(c=>({label:c.label,value:catTotals[c.id],color:c.color}));
-  requestAnimationFrame(()=>drawDoughnut('catChart',segs));
-  const wk=getDateRange('week');const bLabels=wk.map(k=>{const d=new Date(k+'T12:00:00');return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric'});});
-  const bData=wk.map(k=>{let s=Object.values((logs||{})[k]||{}).reduce((a,b)=>a+b,0);(manualTasks||[]).filter(t=>t.date===k).forEach(t=>s+=t.duration);return Math.round(s/60);});
-  requestAnimationFrame(()=>drawBarChart('weekChart',bLabels,bData,wk.indexOf(getTodayKey())));
+// ─── Overview ────────────────────────────────────────────────
+let currentRange = 'today';
+
+async function renderOverview() {
+  const settings = await getSettings();
+  _cachedSettings = settings;
+  const { logs, domainCategories, manualTasks } = await getData();
+  const dc = domainCategories||{};
+  const dateKeys = getDateRange(currentRange);
+  const totals = aggregateLogs(logs||{}, dateKeys);
+  const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const tasksInRange = (manualTasks||[]).filter(t=>dateKeys.includes(t.date));
+  const totalSecs = entries.reduce((s,[,v])=>s+v,0) + tasksInRange.reduce((s,t)=>s+t.duration,0);
+  const totalMins = Math.round(totalSecs/60);
+
+  const allTasks = manualTasks||[];
+  const todayKey = getTodayKey();
+  const todayMins = Math.round(
+    (allTasks.filter(t=>t.date===todayKey).reduce((s,t)=>s+t.duration,0)) / 60
+  );
+  const todaySessionsCount = allTasks.filter(t=>t.date===todayKey).length;
+  const streak = calcStreak(allTasks);
+  const totalAllTimeMins = Math.round(allTasks.reduce((s,t)=>s+t.duration,0)/60);
+  const stage = getStage(totalAllTimeMins);
+  const goalMins = settings.dailyGoalMins || 120;
+  const goalPct = Math.min(100, Math.round((todayMins/goalMins)*100));
+
+  // Hero
+  const hour = new Date().getHours();
+  const name = settings.name ? `, ${settings.name}` : '';
+  document.getElementById('overviewGreet').textContent = (hour<12?'Good morning':'hour<17?Good afternoon':'Good evening') + name + ' 👋';
+  document.getElementById('overviewGreet').textContent = `${hour<12?'Good morning':hour<17?'Good afternoon':'Good evening'}${name} 👋`;
+
+  document.getElementById('heroStageBadge').textContent = stage.name;
+  document.getElementById('heroFocusTime').textContent = fmtMins(todayMins);
+  document.getElementById('heroStreak').textContent = streak;
+  document.getElementById('heroSessions').textContent = todaySessionsCount;
+  document.getElementById('heroGoalNums').textContent = `${todayMins} / ${goalMins} min`;
+  document.getElementById('heroGoalFill').style.width = goalPct + '%';
+
+  let goalMsg;
+  if (todayMins === 0) goalMsg = 'Start a focus session to begin your journey.';
+  else if (goalPct >= 100) goalMsg = '🎉 Daily goal complete! Your sloth is proud.';
+  else if (goalPct >= 75) goalMsg = `Almost there! ${goalMins - todayMins} minutes to go.`;
+  else if (goalPct >= 50) goalMsg = `Great progress — you're over halfway!`;
+  else goalMsg = `${goalMins - todayMins} minutes remaining to reach your goal.`;
+  document.getElementById('heroGoalMessage').textContent = goalMsg;
+
+  let heroSub;
+  if (todayMins === 0) heroSub = 'Your sloth is waiting for its first climb today.';
+  else heroSub = `Your sloth is resting on ${stage.name}. ${stage.msg}`;
+  document.getElementById('heroSub').textContent = heroSub;
+
+  // Streak sidebar
+  const streakEl = document.getElementById('streakText');
+  if (streakEl) streakEl.textContent = streak > 0 ? `🔥 ${streak} day streak` : 'Keep it consistent';
+
+  // Stat cards
+  document.getElementById('statTotal').textContent = fmtMins(currentRange==='today' ? todayMins : totalMins);
+  document.getElementById('statTotalSub').textContent = `of ${goalMins} min goal`;
+  document.getElementById('statStreak').textContent = `${streak} day${streak!==1?'s':''}`;
+  document.getElementById('statSessions').textContent = currentRange==='today' ? todaySessionsCount : tasksInRange.length;
+
+  // Milestone card
+  const nextStage = STAGES[stage.idx+1];
+  if (nextStage) {
+    const remaining = nextStage.minMins - totalAllTimeMins;
+    document.getElementById('statMilestone').textContent = nextStage.name;
+    document.getElementById('statMilestoneSub').textContent = `${remaining}m to unlock`;
+  } else {
+    document.getElementById('statMilestone').textContent = '🌲🌳🌿';
+    document.getElementById('statMilestoneSub').textContent = 'Forest achieved!';
+  }
+
+  // Category cards
+  const catTotals = {};
+  for (const [d,s] of entries) { const c=dc[d]||'uncategorised'; catTotals[c]=(catTotals[c]||0)+s; }
+  for (const t of tasksInRange) { catTotals[t.catId]=(catTotals[t.catId]||0)+t.duration; }
+  renderCatCards(catTotals, document.getElementById('catCardsContainer'));
+
+  // Line chart
+  const wk = getDateRange('week');
+  const bLabels = wk.map(k=>{ const d=new Date(k+'T12:00:00'); return d.toLocaleDateString('en-GB',{weekday:'short'}); });
+  const bData = wk.map(k=>{ let s=Object.values((logs||{})[k]||{}).reduce((a,b)=>a+b,0); (manualTasks||[]).filter(t=>t.date===k).forEach(t=>s+=t.duration); return Math.round(s/60); });
+  requestAnimationFrame(()=>drawLineChart('weekChart', bLabels, bData, wk.indexOf(todayKey)));
+
+  // Companion panel
+  updateCompanion(todayMins, goalMins, streak, todaySessionsCount, totalSecs, stage, nextStage, totalAllTimeMins);
+}
+
+function updateCompanion(todayMins, goalMins, streak, sessions, totalSecs, stage, nextStage, totalAllTimeMins) {
+  const goalPct = Math.min(100, Math.round((todayMins/goalMins)*100));
+  document.getElementById('companionStage').textContent = stage.name;
+  document.getElementById('companionStatus').textContent = activeTask ? '🧗 Climbing…' : goalPct>=100 ? '🎉 Goal reached!' : '🦥 Resting…';
+  document.getElementById('companionGoalDone').textContent = `${todayMins} min`;
+  document.getElementById('companionGoalTotal').textContent = `/ ${goalMins} min`;
+  document.getElementById('companionGoalFill').style.width = goalPct+'%';
+  document.getElementById('companionStreak').textContent = `${streak} day${streak!==1?'s':''}`;
+  document.getElementById('companionSessions').textContent = `${sessions} today`;
+  document.getElementById('companionTotal').textContent = fmtSecs(totalSecs);
+  if (nextStage) {
+    const remaining = nextStage.minMins - totalAllTimeMins;
+    document.getElementById('companionNext').textContent = `${nextStage.name} — ${remaining}m away`;
+  } else {
+    document.getElementById('companionNext').textContent = 'Forest achieved! 🌲';
+  }
+  const q = QUOTES[Math.floor(Date.now()/1000/60) % QUOTES.length];
+  document.getElementById('companionQuote').textContent = q;
 }
 
 // ─── To-Do ───────────────────────────────────────────────────
-
 function populateTodoCatSelect() {
   const sel = document.getElementById('todoCatSelect');
   if (!sel) return;
@@ -253,97 +479,66 @@ function getDueBucket(dueDateStr) {
   const today = getTodayKey();
   if (dueDateStr < today) return 'overdue';
   if (dueDateStr === today) return 'today';
-  const weekEnd = new Date(); weekEnd.setDate(weekEnd.getDate() + 6);
-  const weekEndKey = localKey(weekEnd);
-  if (dueDateStr <= weekEndKey) return 'week';
+  const weekEnd = new Date(); weekEnd.setDate(weekEnd.getDate()+6);
+  if (dueDateStr <= localKey(weekEnd)) return 'week';
   return 'later';
 }
 
 function updateTodoBadge(items) {
   const badge = document.getElementById('todoBadge');
-  const pending = items.filter(i=>!i.completed&&i.source!=='flagged').length;
   const overdue = items.filter(i=>!i.completed&&getDueBucket(i.dueDate)==='overdue').length;
-  if (overdue > 0) { badge.textContent = overdue; badge.style.display=''; }
-  else if (pending > 0) { badge.textContent = pending; badge.style.display=''; }
-  else { badge.style.display='none'; }
+  const pending = items.filter(i=>!i.completed&&i.source!=='flagged').length;
+  if (overdue>0){badge.textContent=overdue;badge.style.display='';}
+  else if(pending>0){badge.textContent=pending;badge.style.display='';}
+  else{badge.style.display='none';}
 }
 
 async function renderTodo() {
   const items = await getTodoItems();
   updateTodoBadge(items);
   populateTodoCatSelect();
-
   const groups = {
-    overdue: { label:'⚠️ Overdue', cls:'overdue', items:[] },
-    today:   { label:'📅 Today',   cls:'today',   items:[] },
-    week:    { label:'📆 This Week',cls:'week',    items:[] },
-    later:   { label:'🗓 Later',    cls:'later',   items:[] },
-    flagged: { label:'📧 Flagged Emails', cls:'flagged', items:[] },
+    overdue:{ label:'⚠️ Overdue', cls:'overdue', items:[] },
+    today:  { label:'📅 Today',   cls:'today',   items:[] },
+    week:   { label:'📆 This Week',cls:'week',    items:[] },
+    later:  { label:'🗓 Later',    cls:'later',   items:[] },
+    flagged:{ label:'📧 Flagged Emails', cls:'flagged', items:[] },
   };
-
   for (const item of items) {
-    if (item.source === 'flagged') { groups.flagged.items.push(item); continue; }
-    if (item.completed) continue; // hide completed from main groups (shown in later)
+    if (item.source==='flagged'){ groups.flagged.items.push(item); continue; }
+    if (item.completed) continue;
     groups[getDueBucket(item.dueDate)].items.push(item);
   }
-
-  // Show completed items in a collapsed "Done today" bucket inside later
-  const doneToday = items.filter(i=>i.completed && i.completedDate===getTodayKey());
-
+  const doneToday = items.filter(i=>i.completed&&i.completedDate===getTodayKey());
   const container = document.getElementById('todoGroups');
-  container.innerHTML = '';
-
-  const groupOrder = ['overdue','today','week','later','flagged'];
-  // Collapse state
-  const collapseKey = 'st_todoCollapse';
-  let collapseState = {};
-  try { collapseState = JSON.parse(localStorage.getItem(collapseKey)||'{}'); } catch {}
-  // Default: overdue+today open, rest open too
-  groupOrder.forEach(k=>{ if(collapseState[k]===undefined) collapseState[k]=true; });
-
-  groupOrder.forEach(gKey => {
-    const g = groups[gKey];
-    const allItems = gKey==='later' ? [...g.items, ...doneToday] : g.items;
-    const card = document.createElement('div');
-    card.className = `card todo-group ${g.cls} ${collapseState[gKey]?'open':''}`;
-
-    const header = document.createElement('div');
-    header.className = 'todo-group-header';
-    header.innerHTML = `<span class="todo-group-title">${g.label}</span><span class="todo-group-count">${allItems.length}</span><span class="todo-group-arrow">›</span>`;
-    header.addEventListener('click', () => {
-      card.classList.toggle('open');
-      collapseState[gKey] = card.classList.contains('open');
-      localStorage.setItem(collapseKey, JSON.stringify(collapseState));
-    });
-
-    const body = document.createElement('div');
-    body.className = 'todo-group-body';
-
-    if (allItems.length === 0) {
-      body.innerHTML = `<div class="todo-empty">Nothing here 🎉</div>`;
-    } else {
-      allItems.forEach(item => renderTodoItem(item, body));
-    }
-
-    card.appendChild(header);
-    card.appendChild(body);
-    container.appendChild(card);
+  container.innerHTML='';
+  const collapseKey='st_todoCollapse';
+  let cs={};
+  try{cs=JSON.parse(localStorage.getItem(collapseKey)||'{}');}catch{}
+  ['overdue','today','week','later','flagged'].forEach(gKey=>{
+    if(cs[gKey]===undefined)cs[gKey]=true;
+    const g=groups[gKey];
+    const allItems=gKey==='later'?[...g.items,...doneToday]:g.items;
+    const card=document.createElement('div');
+    card.className=`card todo-group ${g.cls} ${cs[gKey]?'open':''}`;
+    const header=document.createElement('div');
+    header.className='todo-group-header';
+    header.innerHTML=`<span class="todo-group-title">${g.label}</span><span class="todo-group-count">${allItems.length}</span><span class="todo-group-arrow">›</span>`;
+    header.addEventListener('click',()=>{card.classList.toggle('open');cs[gKey]=card.classList.contains('open');localStorage.setItem(collapseKey,JSON.stringify(cs));});
+    const body=document.createElement('div');
+    body.className='todo-group-body';
+    if(!allItems.length){body.innerHTML=`<div class="todo-empty">Nothing here 🎉</div>`;}
+    else{allItems.forEach(item=>renderTodoItem(item,body));}
+    card.appendChild(header);card.appendChild(body);container.appendChild(card);
   });
 }
 
 function renderTodoItem(item, container) {
-  const cat = getCat(item.catId);
-  const isRunning = activeTask && activeTask.id === item.id;
-  const bucket = getDueBucket(item.dueDate);
-  const dueLabel = item.dueDate
-    ? (bucket==='overdue'?`⚠️ Due ${item.dueDate}`:bucket==='today'?'Due today':`Due ${item.dueDate}`)
-    : '';
-
-  const div = document.createElement('div');
-  div.className = `todo-item${isRunning?' running':''}${item.completed?' completed':''}`;
-
-  div.innerHTML = `
-    <div class="todo-check" data-id="${item.id}">${item.completed?'✓':''}</div>
+  const cat=getCat(item.catId),isRunning=activeTask&&activeTask.id===item.id,bucket=getDueBucket(item.dueDate);
+  const dueLabel=item.dueDate?(bucket==='overdue'?`⚠️ ${item.dueDate}`:bucket==='today'?'Due today':`Due ${item.dueDate}`):'';
+  const div=document.createElement('div');
+  div.className=`todo-item${isRunning?' running':''}${item.completed?' completed':''}`;
+  div.innerHTML=`<div class="todo-check" data-id="${item.id}">${item.completed?'✓':''}</div>
     <div class="todo-info">
       <div class="todo-title">${item.title}</div>
       <div class="todo-meta">
@@ -354,94 +549,49 @@ function renderTodoItem(item, container) {
       </div>
     </div>
     <div class="todo-actions">
-      ${!item.completed && item.source!=='flagged'
-        ? `<button class="todo-start-btn ${isRunning?'stop':''}" data-id="${item.id}">${isRunning?'■ Stop':'▶ Start'}</button>`
-        : ''}
+      ${!item.completed&&item.source!=='flagged'?`<button class="todo-start-btn ${isRunning?'stop':''}" data-id="${item.id}">${isRunning?'■ Stop':'▶ Start'}</button>`:''}
       <button class="todo-del-btn" data-id="${item.id}">✕</button>
     </div>`;
-
-  // Tick/complete
-  div.querySelector('.todo-check').addEventListener('click', async () => {
-    const items = await getTodoItems();
-    const idx = items.findIndex(i=>i.id===item.id);
-    if (idx===-1) return;
-    if (!items[idx].completed) {
-      items[idx].completed = true;
-      items[idx].completedDate = getTodayKey();
-      if (isRunning) await stopTask(true);
-    } else {
-      items[idx].completed = false;
-      items[idx].completedDate = null;
-    }
-    await saveTodoItems(items);
-    renderTodo();
+  div.querySelector('.todo-check').addEventListener('click',async()=>{
+    const items=await getTodoItems(),idx=items.findIndex(i=>i.id===item.id);if(idx===-1)return;
+    if(!items[idx].completed){items[idx].completed=true;items[idx].completedDate=getTodayKey();if(isRunning)await stopTask(true);}
+    else{items[idx].completed=false;items[idx].completedDate=null;}
+    await saveTodoItems(items);renderTodo();
   });
-
-  // Start/Stop
-  div.querySelector('.todo-start-btn')?.addEventListener('click', async () => {
-    if (isRunning) { await stopTask(true); }
-    else { await startTask(item.id); }
-  });
-
-  // Delete
-  div.querySelector('.todo-del-btn').addEventListener('click', async () => {
-    if (!confirm('Delete this task?')) return;
-    if (isRunning) await stopTask(false);
-    const items = await getTodoItems();
-    await saveTodoItems(items.filter(i=>i.id!==item.id));
-    renderTodo();
-  });
-
+  div.querySelector('.todo-start-btn')?.addEventListener('click',async()=>{if(isRunning){await stopTask(true);}else{await startTask(item.id);}});
+  div.querySelector('.todo-del-btn').addEventListener('click',async()=>{if(!confirm('Delete this task?'))return;if(isRunning)await stopTask(false);const items=await getTodoItems();await saveTodoItems(items.filter(i=>i.id!==item.id));renderTodo();});
   container.appendChild(div);
 }
 
-// Add task button
-document.getElementById('todoAddBtn').addEventListener('click', async () => {
-  const title = document.getElementById('todoTitleInput').value.trim();
-  const catId = document.getElementById('todoCatSelect').value || 'uncategorised';
-  const dueDate = document.getElementById('todoDateInput').value || null;
-  if (!title) { document.getElementById('todoTitleInput').focus(); return; }
-  const items = await getTodoItems();
-  items.push({ id:uid(), title, catId, dueDate, completed:false, completedDate:null, createdAt:Date.now(), source:'manual' });
+document.getElementById('todoAddBtn').addEventListener('click',async()=>{
+  const title=document.getElementById('todoTitleInput').value.trim();
+  const catId=document.getElementById('todoCatSelect').value||'uncategorised';
+  const dueDate=document.getElementById('todoDateInput').value||null;
+  if(!title){document.getElementById('todoTitleInput').focus();return;}
+  const items=await getTodoItems();
+  items.push({id:uid(),title,catId,dueDate,completed:false,completedDate:null,createdAt:Date.now(),source:'manual'});
   await saveTodoItems(items);
-  document.getElementById('todoTitleInput').value = '';
-  document.getElementById('todoDateInput').value = '';
+  document.getElementById('todoTitleInput').value='';
+  document.getElementById('todoDateInput').value='';
   renderTodo();
 });
+document.getElementById('todoTitleInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('todoAddBtn').click();});
 
-document.getElementById('todoTitleInput').addEventListener('keydown', e => {
-  if (e.key==='Enter') document.getElementById('todoAddBtn').click();
-});
-
-// ─── Sync flagged emails into todo ───────────────────────────
+// ─── Sync flagged emails ──────────────────────────────────────
 async function syncFlaggedEmails() {
-  const signedIn = await isOutlookSignedIn();
-  if (!signedIn) return;
+  if (!(await isOutlookSignedIn())) return;
   try {
-    const data = await graph('/me/messages', {
-      $filter: "flag/flagStatus eq 'flagged'",
-      $select: 'id,subject,receivedDateTime',
-      $top: '50',
-      $orderby: 'receivedDateTime desc'
-    });
-    const flagged = data.value || [];
-    const items = await getTodoItems();
-    let changed = false;
-    for (const email of flagged) {
-      const exists = items.find(i=>i.emailId===email.id);
-      if (!exists) {
-        items.push({ id:uid(), title:email.subject||'(no subject)', catId:'comms', dueDate:null, completed:false, completedDate:null, createdAt:Date.now(), source:'flagged', emailId:email.id });
-        changed = true;
-      }
-    }
-    if (changed) { await saveTodoItems(items); renderTodo(); }
-  } catch(e) { console.warn('Flagged sync failed:', e.message); }
+    const data = await graph('/me/messages',{$filter:"flag/flagStatus eq 'flagged'",$select:'id,subject,receivedDateTime',$top:'50',$orderby:'receivedDateTime desc'});
+    const flagged=data.value||[];const items=await getTodoItems();let changed=false;
+    for(const email of flagged){if(!items.find(i=>i.emailId===email.id)){items.push({id:uid(),title:email.subject||'(no subject)',catId:'comms',dueDate:null,completed:false,completedDate:null,createdAt:Date.now(),source:'flagged',emailId:email.id});changed=true;}}
+    if(changed){await saveTodoItems(items);renderTodo();}
+  } catch(e){console.warn('Flagged sync:',e.message);}
 }
 
-// ─── Categories editor ────────────────────────────────────────
-async function renderCategories() {
-  const{logs,domainCategories,manualTasks}=await getData();
-  const dc=domainCategories||{};const totals=aggregateLogs(logs||{},getDateRange('today'));
+// ─── Categories ──────────────────────────────────────────────
+async function renderCategories(){
+  const{logs,domainCategories,manualTasks}=await getData();const dc=domainCategories||{};
+  const totals=aggregateLogs(logs||{},getDateRange('today'));
   const tasksToday=(manualTasks||[]).filter(t=>t.date===getTodayKey());
   const catTotals={},catTasks={};
   for(const[d,s]of Object.entries(totals)){const c=dc[d]||'uncategorised';catTotals[c]=(catTotals[c]||0)+s;}
@@ -451,19 +601,17 @@ async function renderCategories() {
     <div class="cat-editor-card">
       <div class="cat-card-top">
         <div class="cat-color-swatch" style="background:${cat.color};cursor:${cat.locked?'default':'pointer'}" data-catid="${cat.id}"></div>
-        <input class="cat-name-input" value="${cat.label}" data-catid="${cat.id}" ${cat.locked?'disabled':''}>
+        <input class="cat-name-input" value="${cat.label}" data-catid="${cat.id}" ${cat.locked?'disabled':''}><br/>
         ${!cat.locked?`<button class="cat-delete-btn" data-catid="${cat.id}">✕</button>`:''}
       </div>
       <div class="cat-stat" style="color:${cat.color}">${fmtSecs(catTotals[cat.id]||0)}</div>
       <div class="cat-stat-sub">${catTasks[cat.id]||0} task${(catTasks[cat.id]||0)!==1?'s':''} today</div>
-    </div>
-  `).join('')+`<div class="cat-add-card" id="addCatBtn"><div class="cat-add-icon">+</div><div class="cat-add-label">New Category</div></div>`;
+    </div>`).join('')+`<div class="cat-add-card" id="addCatBtn"><div class="cat-add-icon">+</div><div class="cat-add-label">New Category</div></div>`;
   grid.querySelectorAll('.cat-name-input').forEach(inp=>{inp.addEventListener('change',async e=>{const cat=CATEGORIES.find(c=>c.id===e.target.getAttribute('data-catid'));if(cat)cat.label=e.target.value.trim()||cat.label;await saveCategories();});});
-  grid.querySelectorAll('.cat-color-swatch').forEach(sw=>{sw.addEventListener('click',e=>{const catId=e.target.getAttribute('data-catid');if(CATEGORIES.find(c=>c.id===catId)?.locked)return;openColorPicker(catId,e.target);});});
-  grid.querySelectorAll('.cat-delete-btn').forEach(btn=>{btn.addEventListener('click',async e=>{const catId=e.target.getAttribute('data-catid');if(!confirm('Delete this category?'))return;CATEGORIES=CATEGORIES.filter(c=>c.id!==catId);await saveCategories();renderCategories();});});
+  grid.querySelectorAll('.cat-color-swatch').forEach(sw=>{sw.addEventListener('click',e=>{const id=e.target.getAttribute('data-catid');if(CATEGORIES.find(c=>c.id===id)?.locked)return;openColorPicker(id,e.target);});});
+  grid.querySelectorAll('.cat-delete-btn').forEach(btn=>{btn.addEventListener('click',async e=>{const id=e.target.getAttribute('data-catid');if(!confirm('Delete?'))return;CATEGORIES=CATEGORIES.filter(c=>c.id!==id);await saveCategories();renderCategories();});});
   document.getElementById('addCatBtn').addEventListener('click',async()=>{const used=CATEGORIES.map(c=>c.color);const color=PALETTE.find(p=>!used.includes(p))||PALETTE[0];const nc={id:uid(),label:'New Category',color};CATEGORIES.push(nc);await saveCategories();renderCategories();setTimeout(()=>{const inp=grid.querySelector(`[data-catid="${nc.id}"].cat-name-input`);if(inp)inp.select();},50);});
 }
-
 function openColorPicker(catId,anchor){
   document.getElementById('colorPickerPopup')?.remove();
   const popup=document.createElement('div');popup.id='colorPickerPopup';popup.className='color-picker-popup';
@@ -475,12 +623,10 @@ function openColorPicker(catId,anchor){
 }
 
 // ─── Timeline ────────────────────────────────────────────────
-async function renderTimeline(dateOverride) {
-  const{sessions,domainCategories,manualTasks}=await getData();
-  const dc=domainCategories||{};const today=dateOverride||getTodayKey();
+async function renderTimeline(dateOverride){
+  const{sessions,domainCategories,manualTasks}=await getData();const dc=domainCategories||{};const today=dateOverride||getTodayKey();
   const todaySessions=(sessions||[]).filter(s=>s.date===today).sort((a,b)=>a.start-b.start);
   const todayTasks=(manualTasks||[]).filter(t=>t.date===today).sort((a,b)=>a.startTime.localeCompare(b.startTime));
-
   const dateNav=document.getElementById('timelineDateNav');
   if(dateNav){
     const d=new Date(today+'T12:00:00'),isToday=today===getTodayKey();
@@ -489,7 +635,6 @@ async function renderTimeline(dateOverride) {
     document.getElementById('tlPrev').onclick=()=>{const d2=new Date(today+'T12:00:00');d2.setDate(d2.getDate()-1);renderTimeline(localKey(d2));};
     if(!isToday)document.getElementById('tlNext').onclick=()=>{const d2=new Date(today+'T12:00:00');d2.setDate(d2.getDate()+1);renderTimeline(localKey(d2));};
   }
-
   const hours=[];for(let h=6;h<22;h++)hours.push(h);
   document.getElementById('timelineRow').innerHTML=hours.map(h=>{
     const slotStart=new Date(today+'T'+String(h).padStart(2,'0')+':00:00').getTime(),slotEnd=slotStart+3600000;
@@ -497,13 +642,12 @@ async function renderTimeline(dateOverride) {
     const topDomain=Object.entries(overlap).sort((a,b)=>b[1]-a[1])[0]?.[0];
     const manualInSlot=todayTasks.filter(t=>{const[th,tm]=t.startTime.split(':').map(Number);const ts=new Date(today).setHours(th,tm,0,0);return Math.min(ts+t.duration*1000,slotEnd)-Math.max(ts,slotStart)>0;});
     const topManual=manualInSlot[0];let bg,opacity,title;
-    if(topManual){const cat=getCat(topManual.catId);bg=cat.color;opacity=0.9;title=`${topManual.title} (${cat.label})`;}
-    else if(topDomain){const cat=getCat(dc[topDomain]||'uncategorised');const totalMs=Object.values(overlap).reduce((a,b)=>a+b,0);bg=cat.color;opacity=Math.min(1,totalMs/1800000+0.2);title=`${topDomain} (${cat.label})`;}
+    if(topManual){const cat=getCat(topManual.catId);bg=cat.color;opacity=0.9;title=`${topManual.title}`;}
+    else if(topDomain){const cat=getCat(dc[topDomain]||'uncategorised');const totalMs=Object.values(overlap).reduce((a,b)=>a+b,0);bg=cat.color;opacity=Math.min(1,totalMs/1800000+0.2);title=topDomain;}
     else{bg='#EDE8E0';opacity=1;title=`${h}:00 — no activity`;}
     return`<div class="timeline-hour"><div class="timeline-block" title="${title}" style="background:${bg};opacity:${opacity}"></div></div>`;
   }).join('');
   document.getElementById('timelineLabels').innerHTML=hours.map(h=>`<div class="timeline-label">${h}</div>`).join('');
-
   const catOpts=CATEGORIES.filter(c=>c.id!=='uncategorised').map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
   document.getElementById('manualTaskForm').innerHTML=`
     <div class="manual-task-form">
@@ -517,44 +661,65 @@ async function renderTimeline(dateOverride) {
         <div class="form-group"><label class="form-label">Start</label><input id="taskStart" class="form-input" type="time" value="${new Date().toTimeString().slice(0,5)}"></div>
         <div class="form-group"><label class="form-label">Duration</label><div style="display:flex;gap:6px"><input id="taskDurH" class="form-input" type="number" min="0" max="12" placeholder="0h" style="width:60px"><input id="taskDurM" class="form-input" type="number" min="0" max="59" placeholder="30m" style="width:60px"></div></div>
         <div class="form-group"><label class="form-label">Notes</label><input id="taskNotes" class="form-input" placeholder="Optional"></div>
-        <button id="taskSubmit" class="btn btn-sage" style="align-self:flex-end">Log Task</button>
+        <button id="taskSubmit" class="btn btn-sage" style="align-self:flex-end">Log</button>
       </div>
     </div>`;
   document.getElementById('taskSubmit').addEventListener('click',async()=>{
-    const title=document.getElementById('taskTitle').value.trim();const catId=document.getElementById('taskCat').value;
-    const date=document.getElementById('taskDate').value;const startTime=document.getElementById('taskStart').value;
-    const h=parseInt(document.getElementById('taskDurH').value)||0;const m=parseInt(document.getElementById('taskDurM').value)||0;
-    const duration=h*3600+m*60;const notes=document.getElementById('taskNotes').value.trim();
+    const title=document.getElementById('taskTitle').value.trim(),catId=document.getElementById('taskCat').value;
+    const date=document.getElementById('taskDate').value,startTime=document.getElementById('taskStart').value;
+    const h=parseInt(document.getElementById('taskDurH').value)||0,m=parseInt(document.getElementById('taskDurM').value)||0;
+    const duration=h*3600+m*60,notes=document.getElementById('taskNotes').value.trim();
     if(!title){alert('Please enter a task name.');return;}if(!duration){alert('Please enter a duration.');return;}
     await saveManualTask({id:uid(),title,catId,date,startTime,duration,notes,createdAt:Date.now()});renderTimeline(today);
   });
-
-  const allEntries=todayTasks.map(t=>({type:'manual',time:t.startTime,label:t.title,catId:t.catId,duration:t.duration,notes:t.notes,id:t.id})).sort((a,b)=>b.time.localeCompare(a.time));
+  const allEntries=todayTasks.map(t=>({time:t.startTime,label:t.title,catId:t.catId,duration:t.duration,notes:t.notes,id:t.id})).sort((a,b)=>b.time.localeCompare(a.time));
   const log=document.getElementById('sessionLog');
   if(!allEntries.length){log.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--grey);padding:30px">No tasks logged yet.</td></tr>';return;}
   log.innerHTML=allEntries.map(e=>{const cat=getCat(e.catId);return`<tr><td class="time-cell">${e.time}</td><td>✋ <strong>${e.label}</strong>${e.notes?`<span class="task-notes"> — ${e.notes}</span>`:''}</td><td class="time-cell">${fmtSecs(e.duration)}</td><td><span class="cat-badge" style="background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44">${cat.label}</span></td><td><button class="delete-task-btn" data-id="${e.id}">✕</button></td></tr>`;}).join('');
   log.querySelectorAll('.delete-task-btn').forEach(btn=>{btn.addEventListener('click',async e=>{if(!confirm('Delete?'))return;await deleteManualTask(e.target.getAttribute('data-id'));renderTimeline(today);});});
 }
 
-// ─── Export ───────────────────────────────────────────────────
+// ─── Settings ────────────────────────────────────────────────
+async function renderSettings() {
+  const s = await getSettings();
+  document.getElementById('settingName').value = s.name||'';
+  document.getElementById('settingGoal').value = s.dailyGoalMins||120;
+  document.getElementById('settingSession').value = s.sessionLengthMins||25;
+}
+document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+  const s = {
+    name: document.getElementById('settingName').value.trim(),
+    dailyGoalMins: parseInt(document.getElementById('settingGoal').value)||120,
+    sessionLengthMins: parseInt(document.getElementById('settingSession').value)||25,
+  };
+  await saveSettings(s);
+  _cachedSettings = s;
+  document.getElementById('saveSettingsBtn').textContent = '✓ Saved!';
+  setTimeout(()=>document.getElementById('saveSettingsBtn').textContent='Save Settings', 1500);
+});
+
+// ─── Export ──────────────────────────────────────────────────
 function renderExport(){
   document.getElementById('jsonExportBtn').onclick=async()=>{const d=await getData();const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`time-sloth-${getTodayKey()}.json`;a.click();URL.revokeObjectURL(u);};
-  document.getElementById('csvExportBtn').onclick=async()=>{const{manualTasks}=await getData();const rows=[['Type','Task','Category','Seconds','Time','Date']];for(const t of(manualTasks||[]).sort((a,b)=>b.date.localeCompare(a.date)))rows.push(['manual',t.title,getCat(t.catId).label,t.duration,fmtSecs(t.duration),t.date]);const b=new Blob([rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`time-sloth-${getTodayKey()}.csv`;a.click();URL.revokeObjectURL(u);};
-  document.getElementById('importJsonBtn').onclick=()=>{const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=async e=>{const file=e.target.files[0];if(!file)return;const text=await file.text();try{const data=JSON.parse(text);if(data.manualTasks)await store.set({manualTasks:data.manualTasks});if(data.categories)await store.set({categories:data.categories});if(data.logs)await store.set({logs:data.logs});if(data.sessions)await store.set({sessions:data.sessions});if(data.domainCategories)await store.set({domainCategories:data.domainCategories});await loadCategories();alert('Data imported!');showSection('overview');}catch{alert('Import failed — invalid JSON.');}};input.click();};
+  document.getElementById('csvExportBtn').onclick=async()=>{const{manualTasks}=await getData();const rows=[['Task','Category','Duration (sec)','Time','Date']];for(const t of(manualTasks||[]).sort((a,b)=>b.date.localeCompare(a.date)))rows.push([t.title,getCat(t.catId).label,t.duration,fmtSecs(t.duration),t.date]);const b=new Blob([rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`time-sloth-${getTodayKey()}.csv`;a.click();URL.revokeObjectURL(u);};
+  document.getElementById('importJsonBtn').onclick=()=>{const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=async e=>{const file=e.target.files[0];if(!file)return;const text=await file.text();try{const data=JSON.parse(text);if(data.manualTasks)await store.set({manualTasks:data.manualTasks});if(data.categories)await store.set({categories:data.categories});if(data.logs)await store.set({logs:data.logs});if(data.sessions)await store.set({sessions:data.sessions});if(data.domainCategories)await store.set({domainCategories:data.domainCategories});await loadCategories();alert('Data imported!');showSection('overview');}catch{alert('Import failed.');}};input.click();};
   document.getElementById('clearDataBtn').onclick=async()=>{if(confirm('Delete ALL data?')){await store.clear();await loadCategories();alert('Cleared.');renderExport();}};
   const keys=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('st_'))keys.push(k);}let bytes=0;keys.forEach(k=>{bytes+=((localStorage.getItem(k)||'').length*2);});const el=document.getElementById('storageUsage');if(el)el.textContent=`${(bytes/1024).toFixed(1)} KB used`;
 }
 
 // ─── Navigation ───────────────────────────────────────────────
-const sections=['overview','todo','categories','timeline','calendar','outlook','export'];
+const sections=['overview','todo','categories','timeline','calendar','outlook','settings','export'];
 function showSection(id){
   sections.forEach(s=>{document.getElementById('section-'+s).className=s===id?'section-visible':'section-hidden';document.querySelector(`.nav-item[data-section="${s}"]`)?.classList.toggle('active',s===id);});
+  const companionPanel=document.getElementById('companionPanel');
+  if(companionPanel)companionPanel.style.display=id==='overview'?'':'none';
   if(id==='overview')renderOverview();
   if(id==='todo'){populateTodoCatSelect();renderTodo();}
   if(id==='categories')renderCategories();
   if(id==='timeline')renderTimeline();
   if(id==='calendar')renderCalendar();
   if(id==='outlook')renderOutlook();
+  if(id==='settings')renderSettings();
   if(id==='export')renderExport();
 }
 document.querySelectorAll('.nav-item').forEach(el=>el.addEventListener('click',()=>showSection(el.getAttribute('data-section'))));
@@ -567,14 +732,12 @@ const SCOPES='openid profile email Mail.Read offline_access';
 const GRAPH_BASE='https://graph.microsoft.com/v1.0';
 function getRedirectUri(){return window.location.origin+window.location.pathname;}
 let outlookRange='today';
-
 function b64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf instanceof ArrayBuffer?buf:buf.buffer||buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');}
 async function makePkce(){const arr=crypto.getRandomValues(new Uint8Array(32));const verifier=b64url(arr);const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier));return{verifier,challenge:b64url(new Uint8Array(digest))};}
 async function saveOutlookTokens(t){t.stored_at=Date.now();await store.set({outlookTokens:t});}
 async function getOutlookTokens(){const r=await store.get('outlookTokens');return r.outlookTokens||null;}
 async function clearOutlookTokens(){await store.remove(['outlookTokens','outlookProfile']);}
 async function isOutlookSignedIn(){return!!(await getOutlookTokens());}
-
 async function getAccessToken(){
   const t=await getOutlookTokens();if(!t)throw new Error('Not signed in');
   const expiresAt=t.stored_at+(t.expires_in-60)*1000;if(Date.now()<expiresAt)return t.access_token;
@@ -602,12 +765,11 @@ async function handleOAuthCallback(){
   if(error){alert('Sign-in failed: '+(url.searchParams.get('error_description')||error));return true;}
   const savedState=sessionStorage.getItem('pkce_state');const verifier=sessionStorage.getItem('pkce_verifier');
   sessionStorage.removeItem('pkce_state');sessionStorage.removeItem('pkce_verifier');
-  if(state!==savedState){alert('Security error — state mismatch.');return true;}
+  if(state!==savedState){alert('Security error.');return true;}
   const tokenRes=await fetch(`${AUTHORITY}/token`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:OUTLOOK_CLIENT_ID,grant_type:'authorization_code',code,redirect_uri:getRedirectUri(),code_verifier:verifier})});
   if(!tokenRes.ok){const e=await tokenRes.json();alert('Token exchange failed: '+(e.error_description||'unknown'));return true;}
   const tokens=await tokenRes.json();await saveOutlookTokens(tokens);return true;
 }
-
 async function fetchEmailStats(rangeKey){
   const now=new Date();let since;
   if(rangeKey==='today'){since=new Date(now);since.setHours(0,0,0,0);}
@@ -623,10 +785,9 @@ async function fetchEmailStats(rangeKey){
 }
 function fmtReplyTime(mins){if(mins===null)return'—';if(mins<60)return`${mins}m`;const h=Math.floor(mins/60),m=mins%60;return m>0?`${h}h ${m}m`:`${h}h`;}
 function fmtEmailTime(iso){const d=new Date(iso),today=new Date();return d.toDateString()===today.toDateString()?d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});}
-
 async function renderOutlook(){
   const body=document.getElementById('outlookBody');const signedIn=await isOutlookSignedIn();
-  if(!signedIn){body.innerHTML=`<div class="outlook-connect-box"><div class="outlook-connect-icon">📧</div><div class="outlook-connect-title">Connect your Outlook</div><div class="outlook-connect-desc">Sign in to pull in email stats and sync flagged emails to your To-Do list.</div><div class="outlook-note">⚠️ Add <code>${getRedirectUri()}</code> as a redirect URI in your Azure app registration first.</div><button class="btn btn-primary" id="outlookSignInBtn" style="width:100%;margin-top:12px">Sign in with Microsoft</button></div>`;document.getElementById('outlookSignInBtn').addEventListener('click',()=>outlookSignIn());return;}
+  if(!signedIn){body.innerHTML=`<div class="outlook-connect-box"><div class="outlook-connect-icon">📧</div><div class="outlook-connect-title">Connect your Outlook</div><div class="outlook-connect-desc">Sign in to pull in email stats and sync flagged emails to your To-Do list automatically.</div><div class="outlook-note">⚠️ Add <code>${getRedirectUri()}</code> as a redirect URI in your Azure app registration first.</div><button class="btn btn-primary" id="outlookSignInBtn" style="width:100%;margin-top:12px">Sign in with Microsoft</button></div>`;document.getElementById('outlookSignInBtn').addEventListener('click',()=>outlookSignIn());return;}
   body.innerHTML=`<div class="outlook-loading"><div class="outlook-loading-spinner"></div>Loading…</div>`;
   try{
     let profile=(await store.get('outlookProfile')).outlookProfile;
@@ -639,11 +800,10 @@ async function renderOutlook(){
       <div class="email-stat-card"><div class="email-stat-icon">📥</div><div class="email-stat-label">Received</div><div class="email-stat-val">${stats.receivedCount}</div><div class="email-stat-sub">${stats.unreadCount} unread</div></div>
       <div class="email-stat-card"><div class="email-stat-icon">📤</div><div class="email-stat-label">Sent</div><div class="email-stat-val">${stats.sentCount}</div><div class="email-stat-sub">emails</div></div>
       <div class="email-stat-card"><div class="email-stat-icon">⚡</div><div class="email-stat-label">Avg Reply</div><div class="email-stat-val" style="font-size:${stats.avgReplyMins!==null&&stats.avgReplyMins>=60?'20px':'26px'}">${fmtReplyTime(stats.avgReplyMins)}</div><div class="email-stat-sub">${stats.avgReplyMins!==null?'per email':'none tracked'}</div></div>
-      <div class="email-stat-card"><div class="email-stat-icon">📊</div><div class="email-stat-label">Sent/Rcvd</div><div class="email-stat-val" style="font-size:20px">${stats.sentCount&&stats.receivedCount?Math.round(stats.sentCount/stats.receivedCount*100)+'%':'—'}</div><div class="email-stat-sub">ratio</div></div>
+      <div class="email-stat-card"><div class="email-stat-icon">📊</div><div class="email-stat-label">Ratio</div><div class="email-stat-val" style="font-size:20px">${stats.sentCount&&stats.receivedCount?Math.round(stats.sentCount/stats.receivedCount*100)+'%':'—'}</div><div class="email-stat-sub">sent / received</div></div>
     </div>
-    <div class="email-recent-card"><div class="card-header"><div class="card-title">Recent Emails</div></div>${stats.recent.length===0?'<div style="text-align:center;padding:30px;color:var(--grey)">No emails</div>':stats.recent.map(m=>`<div class="email-row">${m.isRead?'<div class="email-read-dot"></div>':'<div class="email-unread-dot"></div>'}<div class="email-from">${m.from}</div><div class="email-subject">${m.subject}</div><div class="email-time">${fmtEmailTime(m.time)}</div></div>`).join('')}</div>`;
+    <div class="email-recent-card"><div class="card-header"><div class="card-title">Recent Emails</div></div>${stats.recent.length===0?'<div style="text-align:center;padding:30px;color:var(--grey)">No emails in this period</div>':stats.recent.map(m=>`<div class="email-row">${m.isRead?'<div class="email-read-dot"></div>':'<div class="email-unread-dot"></div>'}<div class="email-from">${m.from}</div><div class="email-subject">${m.subject}</div><div class="email-time">${fmtEmailTime(m.time)}</div></div>`).join('')}</div>`;
     document.getElementById('outlookSignOutBtn').addEventListener('click',async()=>{await clearOutlookTokens();renderOutlook();});
-    // Sync flagged emails to todo
     syncFlaggedEmails();
   }catch(e){body.innerHTML=`<div class="outlook-error">❌ ${e.message}</div><button class="btn" id="outlookRetrySignIn" style="margin-top:12px">Sign in again</button>`;document.getElementById('outlookRetrySignIn').addEventListener('click',async()=>{await clearOutlookTokens();renderOutlook();});}
 }
@@ -652,7 +812,7 @@ document.querySelectorAll('#outlookRangeTabs .range-tab').forEach(btn=>{btn.addE
 // ─── Calendar ────────────────────────────────────────────────
 let calWeekOffset=0,calSlotMins=30;const CAL_START_H=7,CAL_END_H=20;
 function getWeekDates(offset){const today=new Date(),dow=today.getDay(),monday=new Date(today);monday.setDate(today.getDate()-(dow===0?6:dow-1)+offset*7);monday.setHours(0,0,0,0);return Array.from({length:5},(_,i)=>{const d=new Date(monday);d.setDate(monday.getDate()+i);return d;});}
-function hexToRgb(hex){if(!hex||hex.length<7)return'105,197,139';const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`${r},${g},${b}`;}
+function hexToRgb(hex){if(!hex||hex.length<7)return'107,158,78';const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`${r},${g},${b}`;}
 async function renderCalendar(){
   const{sessions,domainCategories,manualTasks,logs}=await getData();const dc=domainCategories||{};const days=getWeekDates(calWeekOffset);const todayStr=getTodayKey();
   const slotH=calSlotMins===15?22:calSlotMins===30?36:56,slotsPerHour=60/calSlotMins,totalHours=CAL_END_H-CAL_START_H,totalSlots=totalHours*slotsPerHour;
@@ -674,7 +834,7 @@ async function renderCalendar(){
     for(let s=0;s<totalSlots;s++){const slotStartMins=CAL_START_H*60+s*calSlotMins,isHour=(slotStartMins%60)===0;const cell=document.createElement('div');cell.className='cal-slot'+(isHour?' hour-start':'');cell.style.height=slotH+'px';slotsWrap.appendChild(cell);}
     if(isToday){const now=new Date(),nowMins=now.getHours()*60+now.getMinutes(),startMins=CAL_START_H*60;if(nowMins>=startMins&&nowMins<=CAL_END_H*60){const pxFromTop=((nowMins-startMins)/calSlotMins)*slotH;const line=document.createElement('div');line.className='cal-now-line';line.style.top=pxFromTop+'px';line.innerHTML='<div class="cal-now-dot"></div>';slotsWrap.appendChild(line);}}
     const calStartMs=new Date(dk+'T00:00:00').setHours(CAL_START_H,0,0,0),pxPerMin=slotH/calSlotMins;
-    for(const ev of events){const cat=getCat(ev.catId);const evStartMins=Math.max(0,(ev.startMs-calStartMs)/60000),evEndMins=Math.min(totalHours*60,(ev.endMs-calStartMs)/60000);if(evEndMins<=0||evStartMins>=totalHours*60)continue;const top=evStartMins*pxPerMin,height=Math.max(14,(evEndMins-evStartMins)*pxPerMin-2);const block=document.createElement('div');block.className='cal-event';block.style.cssText=`top:${top}px;height:${height}px;background:rgba(${hexToRgb(cat.color)},0.18);border-left:3px solid ${cat.color};color:${cat.color};`;block.textContent=height>20?(ev.type==='manual'?'✋ ':'')+ev.label:'';block.title=`${ev.label} (${cat.label}) · ${fmtSecs(Math.round((ev.endMs-ev.startMs)/1000))}`;slotsWrap.appendChild(block);}
+    for(const ev of events){const cat=getCat(ev.catId);const evStartMins=Math.max(0,(ev.startMs-calStartMs)/60000),evEndMins=Math.min(totalHours*60,(ev.endMs-calStartMs)/60000);if(evEndMins<=0||evStartMins>=totalHours*60)continue;const top=evStartMins*pxPerMin,height=Math.max(14,(evEndMins-evStartMins)*pxPerMin-2);const block=document.createElement('div');block.className='cal-event';block.style.cssText=`top:${top}px;height:${height}px;background:rgba(${hexToRgb(cat.color)},0.18);border-left:3px solid ${cat.color};color:${cat.color};`;block.textContent=height>20?(ev.type==='manual'?'✋ ':'')+ev.label:'';block.title=`${ev.label} · ${fmtSecs(Math.round((ev.endMs-ev.startMs)/1000))}`;slotsWrap.appendChild(block);}
     col.appendChild(slotsWrap);calDays.appendChild(col);
   });
   const wrap=document.getElementById('calGridWrap');const scrollTarget=((8-CAL_START_H)*slotsPerHour)*slotH+48;if(wrap._firstRender!==calWeekOffset+'_'+calSlotMins){wrap.scrollTop=scrollTarget;wrap._firstRender=calWeekOffset+'_'+calSlotMins;}
@@ -684,66 +844,25 @@ document.getElementById('calNext').addEventListener('click',()=>{calWeekOffset++
 document.getElementById('calTodayBtn').addEventListener('click',()=>{calWeekOffset=0;renderCalendar();});
 document.querySelectorAll('.slot-tab').forEach(btn=>{btn.addEventListener('click',function(){document.querySelectorAll('.slot-tab').forEach(b=>b.classList.remove('active'));this.classList.add('active');calSlotMins=parseInt(this.getAttribute('data-mins'));renderCalendar();});});
 
-
-// ─── Sloth SVG Character ──────────────────────────────────────
-function buildSlothSVG(state='idle', size=90) {
-  // state: idle | active | celebrate
-  const eyeL = state === 'idle' ? '─' : state === 'celebrate' ? '◕' : '●';
-  const eyeR = state === 'idle' ? '─' : state === 'celebrate' ? '◕' : '●';
-  const mouth = state === 'celebrate' ? '∪' : state === 'active' ? '○' : '‿';
-  const armAngle = state === 'active' ? -30 : state === 'celebrate' ? -60 : 10;
-  const animClass = state === 'idle' ? 'sloth-idle' : state === 'active' ? 'sloth-active' : 'sloth-celebrate';
-
-  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" class="sloth-svg ${animClass}" xmlns="http://www.w3.org/2000/svg">
-    <!-- Body -->
-    <ellipse cx="50" cy="60" rx="28" ry="24" fill="#C4A882" />
-    <!-- Head -->
-    <circle cx="50" cy="36" r="20" fill="#C4A882" />
-    <!-- Face patch -->
-    <ellipse cx="50" cy="40" rx="12" ry="10" fill="#E8D4BC" />
-    <!-- Ears -->
-    <circle cx="31" cy="26" r="8" fill="#A08060" />
-    <circle cx="31" cy="26" r="5" fill="#C4A882" />
-    <circle cx="69" cy="26" r="8" fill="#A08060" />
-    <circle cx="69" cy="26" r="5" fill="#C4A882" />
-    <!-- Eyes -->
-    <circle cx="43" cy="36" r="4" fill="#5C3D1E" />
-    <circle cx="57" cy="36" r="4" fill="#5C3D1E" />
-    ${state !== 'idle' ? '' : '<line x1="40" y1="36" x2="46" y2="36" stroke="#5C3D1E" stroke-width="2" stroke-linecap="round"/><line x1="54" y1="36" x2="60" y2="36" stroke="#5C3D1E" stroke-width="2" stroke-linecap="round"/>'}
-    ${state !== 'idle' ? '<circle cx="43" cy="36" r="2" fill="white" opacity="0.6"/><circle cx="57" cy="36" r="2" fill="white" opacity="0.6"/>' : ''}
-    <!-- Nose -->
-    <ellipse cx="50" cy="43" rx="3" ry="2" fill="#8B6340" />
-    <!-- Mouth -->
-    ${state === 'celebrate' ? '<path d="M44,48 Q50,54 56,48" stroke="#8B6340" stroke-width="1.5" fill="none" stroke-linecap="round"/>' : state === 'active' ? '<circle cx="50" cy="48" r="3" fill="#8B6340" opacity="0.6"/>' : '<path d="M45,48 Q50,52 55,48" stroke="#8B6340" stroke-width="1.5" fill="none" stroke-linecap="round"/>'}
-    <!-- Arms -->
-    <ellipse cx="24" cy="60" rx="7" ry="14" fill="#A08060" transform="rotate(${armAngle} 24 60)" />
-    <ellipse cx="76" cy="60" rx="7" ry="14" fill="#A08060" transform="rotate(${-armAngle} 76 60)" />
-    <!-- Claws left -->
-    <line x1="18" y1="72" x2="15" y2="78" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="22" y1="74" x2="20" y2="80" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
-    <!-- Claws right -->
-    <line x1="82" y1="72" x2="85" y2="78" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="78" y1="74" x2="80" y2="80" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
-    ${state === 'celebrate' ? '<text x="62" y="20" font-size="12" opacity="0.8">✨</text><text x="20" y="22" font-size="10" opacity="0.7">⭐</text>' : ''}
-  </svg>`;
-}
-
-function setHeroSloth(state) {
-  const wrap = document.getElementById('heroSlothWrap');
-  if (wrap) wrap.innerHTML = buildSlothSVG(state, 100);
-}
-
 // ─── Boot ─────────────────────────────────────────────────────
 (async()=>{
-  const wasCallback=await handleOAuthCallback();
+  const wasCallback = await handleOAuthCallback();
   await loadCategories();
+  _cachedSettings = await getSettings();
   await loadActiveTask();
-  setHeroSloth(activeTask ? 'active' : 'idle');
   populateTodoCatSelect();
+  // Initial sloth render
+  setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 100);
+  setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 72);
+  setSloth('focusSlothWrap', 'active', 110);
   showSection('overview');
-  if(wasCallback)showSection('outlook');
-  // Periodic refresh
-  setInterval(async()=>{await loadCategories();const active=document.querySelector('.nav-item.active')?.getAttribute('data-section');if(active)showSection(active);},60000);
-  // Sync flagged emails every 5 mins if signed in
-  setInterval(syncFlaggedEmails,5*60*1000);
+  if (wasCallback) showSection('outlook');
+  // Auto-refresh
+  setInterval(async()=>{
+    await loadCategories();
+    _cachedSettings = await getSettings();
+    const active=document.querySelector('.nav-item.active')?.getAttribute('data-section');
+    if(active)showSection(active);
+  }, 60000);
+  setInterval(syncFlaggedEmails, 5*60*1000);
 })();

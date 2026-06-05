@@ -758,7 +758,9 @@ async function outlookSignIn(){
   window.location.href=`${AUTHORITY}/authorize?${params}`;
 }
 async function handleOAuthCallback(){
-  const url=new URL(window.location.href);const code=url.searchParams.get('code');const state=url.searchParams.get('state');const error=url.searchParams.get('error');
+  let url;
+  try { url=new URL(window.location.href); } catch(e){ return false; }
+  const code=url.searchParams.get('code');const state=url.searchParams.get('state');const error=url.searchParams.get('error');
   if(!code&&!error)return false;
   window.history.replaceState({},document.title,window.location.pathname);
   if(error){alert('Sign-in failed: '+(url.searchParams.get('error_description')||error));return true;}
@@ -845,23 +847,29 @@ document.querySelectorAll('.slot-tab').forEach(btn=>{btn.addEventListener('click
 
 // ─── Boot ─────────────────────────────────────────────────────
 (async()=>{
-  const wasCallback = await handleOAuthCallback();
-  await loadCategories();
-  _cachedSettings = await getSettings();
-  await loadActiveTask();
-  populateTodoCatSelect();
-  // Initial sloth render
-  setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 100);
-  setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 72);
-  setSloth('focusSlothWrap', 'active', 110);
-  showSection('overview');
-  if (wasCallback) showSection('outlook');
-  // Auto-refresh
-  setInterval(async()=>{
+  try {
+    const wasCallback = await handleOAuthCallback();
     await loadCategories();
     _cachedSettings = await getSettings();
-    const active=document.querySelector('.nav-item.active')?.getAttribute('data-section');
-    if(active)showSection(active);
-  }, 60000);
-  setInterval(syncFlaggedEmails, 5*60*1000);
+    await loadActiveTask();
+    populateTodoCatSelect();
+    setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 100);
+    setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 72);
+    setSloth('focusSlothWrap', 'active', 110);
+    showSection('overview');
+    if (wasCallback) showSection('outlook');
+    setInterval(async()=>{
+      try {
+        await loadCategories();
+        _cachedSettings = await getSettings();
+        const active=document.querySelector('.nav-item.active')?.getAttribute('data-section');
+        if(active)showSection(active);
+      } catch(e){ console.warn('Refresh error:', e); }
+    }, 60000);
+    setInterval(syncFlaggedEmails, 5*60*1000);
+  } catch(e) {
+    console.error('Boot error:', e);
+    // Still try to show the page even if boot partially failed
+    try { showSection('overview'); } catch(e2){}
+  }
 })();

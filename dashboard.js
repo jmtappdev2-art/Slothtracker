@@ -109,7 +109,8 @@ function setSloth(wrapperId, state, size) {
   if (!el) return;
   const src = SLOTH_IMGS[state] || SLOTH_IMGS.idle;
   const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
-  el.innerHTML = `<img src="${src}" width="${size}" height="${size}" style="object-fit:contain;display:block;" class="${animClass}" alt="Time Sloth">`;
+  // Image is portrait (tall) so we fix height and let width be auto
+  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;" class="${animClass}" alt="Time Sloth">`;
 }
 
 // ─── Active Task & Focus Screen ──────────────────────────────

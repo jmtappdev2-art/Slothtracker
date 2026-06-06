@@ -686,13 +686,14 @@ function renderExport(){
 }
 
 // ─── Navigation ───────────────────────────────────────────────
-const sections=['overview','todo','categories','timeline','calendar','outlook','settings','export'];
+const sections=['overview','todo','habits','categories','timeline','calendar','outlook','settings','export'];
 function showSection(id){
   sections.forEach(s=>{document.getElementById('section-'+s).className=s===id?'section-visible':'section-hidden';document.querySelector(`.nav-item[data-section="${s}"]`)?.classList.toggle('active',s===id);});
   const companionPanel=document.getElementById('companionPanel');
   if(companionPanel)companionPanel.style.display=id==='overview'?'':'none';
   if(id==='overview')renderOverview();
   if(id==='todo'){populateTodoCatSelect();renderTodo();}
+  if(id==='habits')renderHabits();
   if(id==='categories')renderCategories();
   if(id==='timeline')renderTimeline();
   if(id==='calendar')renderCalendar();
@@ -824,6 +825,311 @@ document.getElementById('calNext').addEventListener('click',()=>{calWeekOffset++
 document.getElementById('calTodayBtn').addEventListener('click',()=>{calWeekOffset=0;renderCalendar();});
 document.querySelectorAll('.slot-tab').forEach(btn=>{btn.addEventListener('click',function(){document.querySelectorAll('.slot-tab').forEach(b=>b.classList.remove('active'));this.classList.add('active');calSlotMins=parseInt(this.getAttribute('data-mins'));renderCalendar();});});
 
+
+// ─── Habits ──────────────────────────────────────────────────
+
+const HABIT_EMOJIS = ['🏃','💪','🧘','📚','✍️','🎯','💧','🥗','😴','🌞','🚴','🎵','🧠','💊','🌿','🍎','🏋️','🤸','📝','🎨','🧹','💰','🙏','❤️','⭐','🔥','🌱','🏆'];
+const HABIT_COLOURS = ['#6B9E4E','#E8A020','#818cf8','#f472b6','#38bdf8','#f59e0b','#ef4444','#a78bfa','#34d399','#fb923c','#2D5016','#8B6340'];
+
+async function getHabits() { const r = await store.get('habits'); return r.habits || []; }
+async function saveHabits(h) { await store.set({ habits: h }); }
+async function getHabitLogs() { const r = await store.get('habitLogs'); return r.habitLogs || {}; }
+async function saveHabitLogs(l) { await store.set({ habitLogs: l }); }
+
+function getHabitStreak(habitId, frequency, timesPerWeek, logs) {
+  const today = getTodayKey();
+  let streak = 0;
+
+  if (frequency === 'daily') {
+    let d = new Date();
+    for (let i = 0; i < 365; i++) {
+      const key = localKey(d);
+      if (key > today) { d.setDate(d.getDate()-1); continue; }
+      if (logs[habitId]?.[key]) { streak++; d.setDate(d.getDate()-1); }
+      else if (key === today) { d.setDate(d.getDate()-1); } // today not done yet = ok
+      else break;
+    }
+  } else if (frequency === 'weekly') {
+    // Count consecutive weeks where target met
+    const tw = timesPerWeek || 3;
+    let weekStart = new Date();
+    const dow = weekStart.getDay();
+    weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1));
+    for (let w = 0; w < 52; w++) {
+      let count = 0;
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(weekStart);
+        day.setDate(weekStart.getDate() + d);
+        const key = localKey(day);
+        if (key > today) continue;
+        if (logs[habitId]?.[key]) count++;
+      }
+      if (count >= tw || (w === 0 && count > 0)) { streak++; weekStart.setDate(weekStart.getDate() - 7); }
+      else if (w === 0) break; // this week not started yet is ok only if no logs
+      else break;
+    }
+  } else if (frequency === 'monthly') {
+    // Count consecutive months with at least 1 completion
+    let d = new Date();
+    for (let m = 0; m < 24; m++) {
+      const year = d.getFullYear(), month = d.getMonth();
+      const daysInMonth = new Date(year, month+1, 0).getDate();
+      let found = false;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const key = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        if (key > today) continue;
+        if (logs[habitId]?.[key]) { found = true; break; }
+      }
+      if (found) { streak++; d.setMonth(d.getMonth()-1); }
+      else if (m === 0) { d.setMonth(d.getMonth()-1); } // current month not done yet = ok
+      else break;
+    }
+  }
+  return streak;
+}
+
+function isHabitDoneToday(habitId, logs) {
+  return !!(logs[habitId]?.[getTodayKey()]);
+}
+
+async function toggleHabitToday(habitId) {
+  const logs = await getHabitLogs();
+  const today = getTodayKey();
+  if (!logs[habitId]) logs[habitId] = {};
+  if (logs[habitId][today]) {
+    delete logs[habitId][today];
+  } else {
+    logs[habitId][today] = true;
+  }
+  await saveHabitLogs(logs);
+  renderHabits();
+}
+
+let selectedHabitEmoji = '🌟';
+let selectedHabitColour = '#6B9E4E';
+let weeklyCountVal = 3;
+let editingHabitId = null;
+let viewingHabitId = null;
+
+async function renderHabits() {
+  const habits = await getHabits();
+  const logs = await getHabitLogs();
+  const grid = document.getElementById('habitGrid');
+  if (!grid) return;
+
+  if (!habits.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--grey);">
+      <div style="font-size:48px;margin-bottom:12px;">🌱</div>
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:16px;font-weight:700;color:var(--forest);margin-bottom:6px;">No habits yet</div>
+      <div style="font-size:13px;">Add your first habit to start building consistency.</div>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = '';
+  habits.forEach(habit => {
+    const done = isHabitDoneToday(habit.id, logs);
+    const streak = getHabitStreak(habit.id, habit.frequency, habit.timesPerWeek, logs);
+    const freqLabel = habit.frequency === 'daily' ? 'Daily' : habit.frequency === 'monthly' ? 'Monthly' : `${habit.timesPerWeek}x / week`;
+
+    const card = document.createElement('div');
+    card.className = `habit-card${done ? ' completed-today' : ''}`;
+    if (done) card.style.background = habit.colour + '18';
+    if (done) card.style.borderColor = habit.colour;
+
+    card.innerHTML = `
+      <button class="habit-edit-btn" data-id="${habit.id}">⋯</button>
+      <div class="habit-circle" style="color:${habit.colour};background:${done ? habit.colour : 'transparent'};">
+        ${done ? '<span style="font-size:36px;">✓</span>' : `<span>${habit.emoji}</span>`}
+        ${streak > 0 ? `<div class="habit-streak-badge">${streak}</div>` : ''}
+      </div>
+      <div class="habit-name">${habit.name}</div>
+      <div class="habit-freq">${freqLabel}</div>`;
+
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.habit-edit-btn')) return;
+      toggleHabitToday(habit.id);
+    });
+
+    card.querySelector('.habit-edit-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openHabitModal(habit);
+    });
+
+    // Long press / double click to see calendar
+    let pressTimer;
+    card.addEventListener('mousedown', () => { pressTimer = setTimeout(() => showHabitCalendar(habit.id), 500); });
+    card.addEventListener('mouseup', () => clearTimeout(pressTimer));
+    card.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+    grid.appendChild(card);
+  });
+}
+
+function showHabitCalendar(habitId) {
+  viewingHabitId = habitId;
+  const detail = document.getElementById('habitCalendarDetail');
+  detail.style.display = 'block';
+  renderHabitCalendar(habitId);
+}
+
+async function renderHabitCalendar(habitId) {
+  const habits = await getHabits();
+  const logs = await getHabitLogs();
+  const habit = habits.find(h => h.id === habitId);
+  if (!habit) return;
+
+  document.getElementById('habitCalTitle').textContent = `${habit.emoji} ${habit.name}`;
+  document.getElementById('habitCalSub').textContent = `Streak: ${getHabitStreak(habitId, habit.frequency, habit.timesPerWeek, logs)} days`;
+
+  const now = new Date();
+  const year = now.getFullYear(), month = now.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const startDow = (firstDay.getDay() + 6) % 7; // Mon=0
+  const today = getTodayKey();
+
+  const calGrid = document.getElementById('habitCalGrid');
+  const monthName = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+  let html = `<div style="grid-column:1/-1;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;color:var(--forest);margin-bottom:8px;">${monthName}</div>`;
+  ['M','T','W','T','F','S','S'].forEach(d => { html += `<div class="habit-cal-header">${d}</div>`; });
+
+  // Empty cells before first day
+  for (let i = 0; i < startDow; i++) html += `<div></div>`;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const key = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const done = !!(logs[habitId]?.[key]);
+    const isToday = key === today;
+    const isFuture = key > today;
+    const isPast = key < today && !isFuture;
+
+    let cls = 'habit-cal-day';
+    let style = '';
+    let content = day;
+
+    if (isFuture) { cls += ' future'; }
+    else if (done) { cls += ' done'; style = `background:${habit.colour};`; content = '✓'; }
+    else if (isPast) { cls += ' missed'; content = day; }
+    if (isToday) cls += ' today';
+
+    html += `<div class="${cls}" style="${style}">${content}</div>`;
+  }
+
+  calGrid.innerHTML = html;
+}
+
+document.getElementById('habitCalClose').addEventListener('click', () => {
+  document.getElementById('habitCalendarDetail').style.display = 'none';
+});
+
+function openHabitModal(habitToEdit = null) {
+  editingHabitId = habitToEdit ? habitToEdit.id : null;
+  selectedHabitEmoji = habitToEdit ? habitToEdit.emoji : '🌟';
+  selectedHabitColour = habitToEdit ? habitToEdit.colour : '#6B9E4E';
+  weeklyCountVal = habitToEdit?.timesPerWeek || 3;
+
+  document.getElementById('habitModalTitle').textContent = habitToEdit ? 'Edit Habit' : 'New Habit';
+  document.getElementById('habitNameInput').value = habitToEdit ? habitToEdit.name : '';
+
+  // Frequency
+  const freq = habitToEdit?.frequency || 'daily';
+  document.querySelectorAll('input[name="habitFreq"]').forEach(r => { r.checked = r.value === freq; });
+  document.getElementById('weeklyCountWrap').style.display = freq === 'weekly' ? 'flex' : 'none';
+  document.getElementById('weeklyCount').textContent = weeklyCountVal;
+
+  // Emoji grid
+  const emojiGrid = document.getElementById('habitEmojiGrid');
+  emojiGrid.innerHTML = HABIT_EMOJIS.map(e =>
+    `<div class="habit-emoji-btn${e === selectedHabitEmoji ? ' selected' : ''}" data-emoji="${e}">${e}</div>`
+  ).join('');
+  emojiGrid.querySelectorAll('.habit-emoji-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedHabitEmoji = btn.getAttribute('data-emoji');
+      emojiGrid.querySelectorAll('.habit-emoji-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      document.getElementById('habitEmojiPreview').textContent = selectedHabitEmoji;
+    });
+  });
+  document.getElementById('habitEmojiPreview').textContent = selectedHabitEmoji;
+
+  // Colour grid
+  const colourGrid = document.getElementById('habitColourGrid');
+  colourGrid.innerHTML = HABIT_COLOURS.map(c =>
+    `<div class="habit-colour-swatch${c === selectedHabitColour ? ' selected' : ''}" style="background:${c}" data-colour="${c}"></div>`
+  ).join('');
+  colourGrid.querySelectorAll('.habit-colour-swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      selectedHabitColour = sw.getAttribute('data-colour');
+      colourGrid.querySelectorAll('.habit-colour-swatch').forEach(s => s.classList.remove('selected'));
+      sw.classList.add('selected');
+    });
+  });
+
+  const modal = document.getElementById('habitModal');
+  modal.style.display = 'flex';
+}
+
+// Frequency radio toggle
+document.querySelectorAll('input[name="habitFreq"]').forEach(r => {
+  r.addEventListener('change', () => {
+    document.getElementById('weeklyCountWrap').style.display = r.value === 'weekly' ? 'flex' : 'none';
+  });
+});
+
+// Weekly count +/-
+document.getElementById('weeklyMinus').addEventListener('click', () => {
+  if (weeklyCountVal > 1) { weeklyCountVal--; document.getElementById('weeklyCount').textContent = weeklyCountVal; }
+});
+document.getElementById('weeklyPlus').addEventListener('click', () => {
+  if (weeklyCountVal < 7) { weeklyCountVal++; document.getElementById('weeklyCount').textContent = weeklyCountVal; }
+});
+
+document.getElementById('habitModalCancel').addEventListener('click', () => {
+  document.getElementById('habitModal').style.display = 'none';
+});
+
+document.getElementById('habitModalSave').addEventListener('click', async () => {
+  const name = document.getElementById('habitNameInput').value.trim();
+  if (!name) { document.getElementById('habitNameInput').focus(); return; }
+  const frequency = document.querySelector('input[name="habitFreq"]:checked').value;
+
+  const habits = await getHabits();
+  if (editingHabitId) {
+    const idx = habits.findIndex(h => h.id === editingHabitId);
+    if (idx !== -1) {
+      habits[idx] = { ...habits[idx], name, emoji: selectedHabitEmoji, colour: selectedHabitColour, frequency, timesPerWeek: weeklyCountVal };
+    }
+  } else {
+    habits.push({ id: uid(), name, emoji: selectedHabitEmoji, colour: selectedHabitColour, frequency, timesPerWeek: weeklyCountVal, createdAt: Date.now() });
+  }
+  await saveHabits(habits);
+  document.getElementById('habitModal').style.display = 'none';
+  renderHabits();
+});
+
+// Delete habit from edit modal - add delete button
+document.getElementById('habitModalSave').insertAdjacentHTML('beforebegin',
+  '<button class="btn" id="habitDeleteBtn" style="flex:1;border-color:#dc2626;color:#dc2626;display:none">Delete</button>');
+
+document.getElementById('habitDeleteBtn').addEventListener('click', async () => {
+  if (!editingHabitId) return;
+  if (!confirm('Delete this habit and all its history?')) return;
+  const habits = (await getHabits()).filter(h => h.id !== editingHabitId);
+  await saveHabits(habits);
+  document.getElementById('habitModal').style.display = 'none';
+  renderHabits();
+});
+
+// Show delete button when editing
+const origOpen = openHabitModal;
+
+document.getElementById('addHabitBtn').addEventListener('click', () => {
+  document.getElementById('habitDeleteBtn').style.display = 'none';
+  openHabitModal();
+});
+
 // ─── Boot ─────────────────────────────────────────────────────
 (async()=>{
   try {
@@ -833,6 +1139,7 @@ document.querySelectorAll('.slot-tab').forEach(btn=>{btn.addEventListener('click
     await loadActiveTask();
     populateTodoCatSelect();
     setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 180);
+    renderHabits();
     setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 140);
     setSloth('focusSlothWrap', 'active', 200);
     showSection('overview');

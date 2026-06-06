@@ -407,6 +407,88 @@
     .sloth-active{animation:slothWiggle 2s ease-in-out infinite;}
     .sloth-celebrate{animation:slothCelebrate .7s ease-in-out 3;}
 
+
+    /* ══ HABITS ══ */
+    .habit-card {
+      background: #fff;
+      border: 1px solid var(--grey-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+      overflow: hidden;
+      text-align: center;
+    }
+    .habit-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+    .habit-card.completed-today { border-width: 2px; }
+    .habit-circle {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+      border: 3px solid currentColor;
+      transition: all .2s;
+      position: relative;
+    }
+    .habit-card.completed-today .habit-circle { color: #fff !important; }
+    .habit-streak-badge {
+      position: absolute;
+      bottom: -2px; right: -2px;
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--gold);
+      color: var(--forest);
+      font-size: 10px;
+      font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid #fff;
+    }
+    .habit-name {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--forest);
+    }
+    .habit-card.completed-today .habit-name { color: var(--forest); }
+    .habit-freq {
+      font-size: 10px;
+      color: var(--grey);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+    .habit-check-icon {
+      font-size: 28px;
+    }
+    .habit-cal-day {
+      aspect-ratio: 1;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--cream-dark);
+      color: var(--grey);
+      cursor: default;
+    }
+    .habit-cal-day.done { color: #fff; }
+    .habit-cal-day.missed { background: var(--cream-dark); color: var(--grey-mid); position: relative; }
+    .habit-cal-day.missed::after { content: '✕'; position: absolute; font-size: 14px; color: #dc2626; opacity: .5; }
+    .habit-cal-day.today { outline: 2px solid var(--gold); }
+    .habit-cal-day.future { opacity: .3; }
+    .habit-cal-header { font-size: 10px; font-weight: 700; color: var(--grey); text-align: center; text-transform: uppercase; letter-spacing: .5px; padding-bottom: 6px; }
+    .habit-colour-swatch { width: 28px; height: 28px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: all .15s; flex-shrink: 0; }
+    .habit-colour-swatch.selected { border-color: var(--forest); transform: scale(1.2); }
+    .habit-emoji-btn { font-size: 20px; cursor: pointer; padding: 4px; border-radius: 6px; transition: background .1s; text-align: center; }
+    .habit-emoji-btn:hover { background: var(--mint); }
+    .habit-emoji-btn.selected { background: var(--mint); outline: 2px solid var(--sage); border-radius: 6px; }
+    .habit-edit-btn { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--grey-mid); cursor: pointer; font-size: 14px; opacity: 0; transition: opacity .15s; }
+    .habit-card:hover .habit-edit-btn { opacity: 1; }
+
     /* ══ SECTIONS ══ */
     .section-hidden{display:none;}
     .section-visible{display:block;}
@@ -489,6 +571,7 @@
       <div class="nav-label">Dashboard</div>
       <div class="nav-item active" data-section="overview"><span class="nav-icon">📊</span><span class="nav-label-text">Overview</span></div>
       <div class="nav-item" data-section="todo"><span class="nav-icon">✅</span><span class="nav-label-text">To-Do</span><span class="nav-badge" id="todoBadge" style="display:none"></span></div>
+      <div class="nav-item" data-section="habits"><span class="nav-icon">🔥</span><span class="nav-label-text">Habits</span></div>
       <div class="nav-item" data-section="categories"><span class="nav-icon">🏷️</span><span class="nav-label-text">Categories</span></div>
       <div class="nav-item" data-section="timeline"><span class="nav-icon">🕐</span><span class="nav-label-text">Timeline</span></div>
       <div class="nav-item" data-section="calendar"><span class="nav-icon">📅</span><span class="nav-label-text">Calendar</span></div>
@@ -588,6 +671,85 @@
             </div>
           </div>
           <div id="todoGroups"></div>
+        </section>
+
+
+        <!-- ── Habits ── -->
+        <section id="section-habits" class="section-hidden">
+          <div class="page-header">
+            <div><div class="page-title">🔥 Habits</div><div class="page-sub">Build consistency one day at a time</div></div>
+            <button class="btn btn-gold" id="addHabitBtn">+ New Habit</button>
+          </div>
+
+          <!-- Add habit modal -->
+          <div id="habitModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:20px;padding:28px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:18px;font-weight:800;color:var(--forest);margin-bottom:20px;" id="habitModalTitle">New Habit</div>
+
+              <!-- Emoji picker -->
+              <div style="margin-bottom:16px;">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:8px;">Icon</div>
+                <div id="habitEmojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;max-height:120px;overflow-y:auto;padding:4px;background:var(--cream-dark);border-radius:12px;">
+                </div>
+                <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:10px;color:var(--grey);">Selected:</span>
+                  <span id="habitEmojiPreview" style="font-size:24px;">🌟</span>
+                </div>
+              </div>
+
+              <!-- Name -->
+              <div style="margin-bottom:16px;">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:6px;">Name</div>
+                <input id="habitNameInput" class="form-input" placeholder="e.g. Exercise, Read, Meditate" style="width:100%">
+              </div>
+
+              <!-- Colour -->
+              <div style="margin-bottom:16px;">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:8px;">Colour</div>
+                <div id="habitColourGrid" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+              </div>
+
+              <!-- Frequency -->
+              <div style="margin-bottom:20px;">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:8px;">Frequency</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="habitFreq" value="daily" checked> Daily</label>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="habitFreq" value="weekly"> <span id="weeklyLabel">X times/week</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="habitFreq" value="monthly"> Monthly</label>
+                </div>
+                <div id="weeklyCountWrap" style="display:none;margin-top:10px;display:flex;align-items:center;gap:10px;">
+                  <span style="font-size:13px;color:var(--grey);">Times per week:</span>
+                  <button id="weeklyMinus" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--grey-light);background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">−</button>
+                  <span id="weeklyCount" style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:16px;min-width:20px;text-align:center;">3</span>
+                  <button id="weeklyPlus" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--grey-light);background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">+</button>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:10px;">
+                <button class="btn" id="habitModalCancel" style="flex:1">Cancel</button>
+                <button class="btn btn-sage" id="habitModalSave" style="flex:1">Save Habit</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Habit grid -->
+          <div id="habitGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:28px;"></div>
+
+          <!-- Habit calendar detail -->
+          <div id="habitCalendarDetail" style="display:none;">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <div class="card-title" id="habitCalTitle">Habit Calendar</div>
+                  <div class="card-sub" id="habitCalSub"></div>
+                </div>
+                <button class="btn" id="habitCalClose" style="padding:6px 12px;font-size:12px;">✕ Close</button>
+              </div>
+              <div style="padding:20px;">
+                <div id="habitCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;"></div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- ── Categories ── -->

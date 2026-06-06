@@ -67,7 +67,7 @@
     /* ══ COMPANION PANEL ══ */
     .companion-panel{width:var(--companion-w);flex-shrink:0;position:sticky;top:24px;}
     .companion-card{background:#fff;border:1px solid var(--grey-light);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px;}
-    .companion-sloth-area{background:linear-gradient(160deg,var(--forest) 0%,var(--forest-mid) 100%);padding:24px 20px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;position:relative;overflow:hidden;}
+    .companion-sloth-area{background:linear-gradient(160deg,var(--forest) 0%,var(--forest-mid) 100%);padding:24px 20px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;position:relative;overflow:hidden;min-height:160px;}
     .companion-sloth-area::before{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;background:rgba(255,255,255,0.04);border-radius:50%;}
     .companion-sloth-svg{position:relative;z-index:1;}
     .companion-status{font-size:11px;color:rgba(255,255,255,0.6);font-weight:500;text-align:center;}
@@ -509,6 +509,10 @@
     .focus-pause-btn { background:rgba(255,255,255,0.15); border:1.5px solid rgba(255,255,255,0.3); color:#fff; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; padding:11px 20px; border-radius:var(--radius-sm); cursor:pointer; transition:all .15s; }
     .focus-pause-btn:hover { background:rgba(255,255,255,0.25); }
 
+
+    .sloth-idle img, .sloth-active img, .sloth-celebrate img,
+    .sloth-idle, .sloth-active, .sloth-celebrate { background: transparent !important; }
+    #heroSlothWrap img, #companionSlothWrap img, #focusSlothWrap img { background: transparent !important; }
     /* ══ SECTIONS ══ */
     .section-hidden{display:none;}
     .section-visible{display:block;}
@@ -697,9 +701,15 @@
 
         <!-- ── Habits ── -->
         <section id="section-habits" class="section-hidden">
-          <div class="page-header">
-            <div><div class="page-title">🔥 Habits</div><div class="page-sub">Build consistency one day at a time</div></div>
-            <button class="btn btn-gold" id="addHabitBtn">+ New Habit</button>
+          <!-- Evolution banner -->
+          <div style="background:linear-gradient(135deg,var(--forest) 0%,var(--forest-mid) 100%);border-radius:var(--radius);padding:20px 28px;margin-bottom:24px;display:flex;align-items:center;gap:24px;box-shadow:var(--shadow-lg);overflow:hidden;position:relative;">
+            <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;background:rgba(255,255,255,0.03);border-radius:50%;"></div>
+            <img src="Evolutuon sloth .png" style="height:120px;width:auto;object-fit:contain;flex-shrink:0;position:relative;z-index:1;" alt="Evolution Sloth">
+            <div style="position:relative;z-index:1;">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:20px;font-weight:800;color:#fff;margin-bottom:6px;">Build Your Habits 🔥</div>
+              <div style="font-size:13px;color:rgba(255,255,255,0.65);line-height:1.5;margin-bottom:12px;">Small consistent actions create extraordinary results.<br>Track daily, weekly and monthly habits here.</div>
+              <button class="btn btn-gold" id="addHabitBtn" style="font-size:13px;">+ New Habit</button>
+            </div>
           </div>
 
           <!-- Add habit modal -->

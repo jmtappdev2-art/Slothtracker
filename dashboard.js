@@ -99,8 +99,9 @@ async function saveTodoItems(items) { await store.set({todoItems:items}); }
 
 // ─── Sloth Images ────────────────────────────────────────────
 const SLOTH_IMGS = {
-  idle:      'Locked in sloth .png',   // at laptop, calm
+  idle:      'Multitaks Sloth .png',   // overview hero default
   active:    'Hyperspeed sloth.png',   // flying, focus mode
+  locked:    'Locked in sloth .png',   // focused at laptop
   celebrate: 'Multitaks Sloth .png',  // juggling, goal complete
   running:   'Running sloth .png',    // banner while task running
   business:  'Business Sloth .png',   // goal achieved
@@ -132,7 +133,7 @@ async function saveActiveTask() { await store.set({activeTask}); }
 function updateBanner() {
   const allIdle = !activeTask;
   setSloth('heroSlothWrap', allIdle ? 'idle' : 'active', 180);
-  setSloth('companionSlothWrap', allIdle ? 'idle' : 'active', 140);
+  setSloth('companionSlothWrap', allIdle ? 'locked' : 'active', 140);
   const banner = document.getElementById('activeTaskBanner');
   if (!activeTask) { banner.classList.remove('visible'); return; }
   banner.classList.add('visible');
@@ -430,7 +431,7 @@ async function renderOverview() {
   // Show business sloth when daily goal complete, else idle/active based on task
   if (!activeTask) {
     setSloth('heroSlothWrap', goalPct >= 100 ? 'business' : 'idle', 180);
-    setSloth('companionSlothWrap', goalPct >= 100 ? 'business' : 'idle', 140);
+    setSloth('companionSlothWrap', goalPct >= 100 ? 'business' : 'locked', 140);
   }
 
   // Streak sidebar

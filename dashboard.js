@@ -99,12 +99,12 @@ async function saveTodoItems(items) { await store.set({todoItems:items}); }
 
 // ─── Sloth Images ────────────────────────────────────────────
 const SLOTH_IMGS = {
-  idle:      'Locked_in_sloth_.png',   // at laptop, calm
-  active:    'Hyperspeed_sloth.png',   // flying, focus mode
-  celebrate: 'Multitaks_Sloth_.png',  // juggling, goal complete
-  running:   'Running_sloth_.png',    // banner while task running
-  business:  'Business_Sloth_.png',   // goal achieved
-  logo:      'Timesloth_Mian_logo.png',
+  idle:      'Locked in sloth .png',   // at laptop, calm
+  active:    'Hyperspeed sloth.png',   // flying, focus mode
+  celebrate: 'Multitaks Sloth .png',  // juggling, goal complete
+  running:   'Running sloth .png',    // banner while task running
+  business:  'Business Sloth .png',   // goal achieved
+  logo:      'Timesloth Mian logo.png',
 };
 
 function setSloth(wrapperId, state, size) {

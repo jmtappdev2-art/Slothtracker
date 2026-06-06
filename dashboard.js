@@ -99,9 +99,12 @@ async function saveTodoItems(items) { await store.set({todoItems:items}); }
 
 // ─── Sloth Images ────────────────────────────────────────────
 const SLOTH_IMGS = {
-  idle:      'sloth-idle.png',
-  active:    'sloth-active.png',
-  celebrate: 'sloth-celebrate.png',
+  idle:      'Locked_in_sloth_.png',   // at laptop, calm
+  active:    'Hyperspeed_sloth.png',   // flying, focus mode
+  celebrate: 'Multitaks_Sloth_.png',  // juggling, goal complete
+  running:   'Running_sloth_.png',    // banner while task running
+  business:  'Business_Sloth_.png',   // goal achieved
+  logo:      'Timesloth_Mian_logo.png',
 };
 
 function setSloth(wrapperId, state, size) {
@@ -109,8 +112,7 @@ function setSloth(wrapperId, state, size) {
   if (!el) return;
   const src = SLOTH_IMGS[state] || SLOTH_IMGS.idle;
   const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
-  // Image is portrait (tall) so we fix height and let width be auto
-  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;" class="${animClass}" alt="Time Sloth">`;
+  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;max-width:100%;" class="${animClass}" alt="Time Sloth">`;
 }
 
 // ─── Active Task & Focus Screen ──────────────────────────────
@@ -225,7 +227,7 @@ async function stopTask(action='done') {
     setTimeout(() => {
       setSloth('heroSlothWrap', 'idle', 180);
       setSloth('companionSlothWrap', 'idle', 140);
-    }, 2500);
+    }, 3000);
   } else {
     setSloth('heroSlothWrap', 'idle', 180);
     setSloth('companionSlothWrap', 'idle', 140);
@@ -425,6 +427,11 @@ async function renderOverview() {
   if (todayMins === 0) heroSub = 'Your sloth is waiting for its first climb today.';
   else heroSub = `Your sloth is resting on ${stage.name}. ${stage.msg}`;
   document.getElementById('heroSub').textContent = heroSub;
+  // Show business sloth when daily goal complete, else idle/active based on task
+  if (!activeTask) {
+    setSloth('heroSlothWrap', goalPct >= 100 ? 'business' : 'idle', 180);
+    setSloth('companionSlothWrap', goalPct >= 100 ? 'business' : 'idle', 140);
+  }
 
   // Streak sidebar
   const streakEl = document.getElementById('streakText');

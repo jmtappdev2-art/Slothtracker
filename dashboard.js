@@ -161,7 +161,7 @@ function startTimerTick() {
 let _cachedSettings = null;
 
 async function startTask(todoId) {
-  if (activeTask) await stopTask(false);
+  if (activeTask) await stopTask('cancel');
   const items = await getTodoItems();
   const item = items.find(i => i.id === todoId);
   if (!item) return;
@@ -170,42 +170,81 @@ async function startTask(todoId) {
   updateBanner();
   startTimerTick();
   renderTodo();
-  openFocusScreen(item.title);
+  openFocusScreen(item.title, item.catId);
 }
 
-async function stopTask(log=true) {
+// action: 'done' | 'pause' | 'cancel'
+async function stopTask(action='done') {
   if (!activeTask) return;
-  if (log) {
-    const duration = Math.round((Date.now() - activeTask.startTime) / 1000);
-    if (duration >= 5) {
-      const now = new Date(activeTask.startTime);
-      const startTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-      await saveManualTask({ id:uid(), title:activeTask.title, catId:activeTask.catId, date:localKey(now), startTime, duration, notes:'via To-Do timer', createdAt:Date.now() });
-      focusSessionCount++;
+  const duration = Math.round((Date.now() - activeTask.startTime) / 1000);
+  const shouldLog = (action === 'done' || action === 'pause') && duration >= 5;
+
+  if (shouldLog) {
+    const now = new Date(activeTask.startTime);
+    const endNow = new Date();
+    const startTimeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const sessionNote = action === 'pause' ? 'paused session' : 'focus session';
+
+    // Log to timeline/calendar as a manual task session
+    await saveManualTask({
+      id: uid(),
+      title: activeTask.title,
+      catId: activeTask.catId,
+      date: localKey(now),
+      startTime: startTimeStr,
+      endTime: `${String(endNow.getHours()).padStart(2,'0')}:${String(endNow.getMinutes()).padStart(2,'0')}`,
+      duration,
+      notes: sessionNote,
+      createdAt: Date.now()
+    });
+
+    // Record session on the todo item itself
+    const todoItems = await getTodoItems();
+    const idx = todoItems.findIndex(i=>i.id===activeTask.id);
+    if (idx !== -1) {
+      if (!todoItems[idx].sessions) todoItems[idx].sessions = [];
+      todoItems[idx].sessions.push({ startTime: activeTask.startTime, endTime: Date.now(), duration });
+      if (action === 'done') {
+        todoItems[idx].completed = true;
+        todoItems[idx].completedDate = getTodayKey();
+      }
+      await saveTodoItems(todoItems);
     }
+    focusSessionCount++;
   }
+
+  const wasTask = { ...activeTask };
   activeTask = null;
   await store.remove('activeTask');
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   closeFocusScreen();
-  // Celebrate
-  setSloth('heroSlothWrap', 'celebrate', 180);
-  setSloth('companionSlothWrap', 'celebrate', 140);
-  setTimeout(() => {
+
+  if (action === 'done') {
+    setSloth('heroSlothWrap', 'celebrate', 180);
+    setSloth('companionSlothWrap', 'celebrate', 140);
+    setTimeout(() => {
+      setSloth('heroSlothWrap', 'idle', 180);
+      setSloth('companionSlothWrap', 'idle', 140);
+    }, 2500);
+  } else {
     setSloth('heroSlothWrap', 'idle', 180);
     setSloth('companionSlothWrap', 'idle', 140);
-  }, 2500);
+  }
+
   updateBanner();
   renderTodo();
-  // Refresh overview if visible
-  const active = document.querySelector('.nav-item.active')?.getAttribute('data-section');
-  if (active === 'overview') renderOverview();
+  const activeSection = document.querySelector('.nav-item.active')?.getAttribute('data-section');
+  if (activeSection === 'overview') renderOverview();
 }
 
 // ─── Focus Screen ─────────────────────────────────────────────
-function openFocusScreen(taskName) {
+function openFocusScreen(taskName, catId) {
   focusScreenOpen = true;
-  document.getElementById('focusScreen').classList.add('visible');
+  const cat = getCat(catId);
+  const screen = document.getElementById('focusScreen');
+  screen.classList.add('visible');
+  // Category colour gradient background
+  screen.style.background = `linear-gradient(160deg, ${cat.color}dd 0%, ${cat.color}99 50%, #1a3a0a 100%)`;
   document.getElementById('focusTaskName').textContent = taskName || 'Focus Session';
   document.getElementById('focusSessionNum').textContent = focusSessionCount + 1;
   document.getElementById('focusProgressFill').style.width = '0%';
@@ -219,11 +258,10 @@ function closeFocusScreen() {
   document.getElementById('focusScreen').classList.remove('visible');
 }
 
-document.getElementById('focusDoneBtn').addEventListener('click', () => stopTask(true));
-document.getElementById('focusCancelBtn').addEventListener('click', async () => {
-  await stopTask(false);
-});
-document.getElementById('bannerStopBtn').addEventListener('click', () => stopTask(true));
+document.getElementById('focusDoneBtn').addEventListener('click', () => stopTask('done'));
+document.getElementById('focusPauseBtn').addEventListener('click', () => stopTask('pause'));
+document.getElementById('focusCancelBtn').addEventListener('click', () => stopTask('cancel'));
+document.getElementById('bannerStopBtn').addEventListener('click', () => stopTask('done'));
 
 // Hero buttons
 document.getElementById('heroFocusBtn').addEventListener('click', async () => {
@@ -446,6 +484,7 @@ function updateCompanion(todayMins, goalMins, streak, sessions, totalSecs, stage
 }
 
 // ─── To-Do ───────────────────────────────────────────────────
+
 function populateTodoCatSelect() {
   const sel = document.getElementById('todoCatSelect');
   if (!sel) return;
@@ -462,98 +501,266 @@ function getDueBucket(dueDateStr) {
   return 'later';
 }
 
+function bucketToDate(bucket) {
+  const d = new Date();
+  if (bucket === 'today') return getTodayKey();
+  if (bucket === 'overdue') { d.setDate(d.getDate()-1); return localKey(d); }
+  if (bucket === 'week') { d.setDate(d.getDate()+2); return localKey(d); }
+  if (bucket === 'later') { d.setDate(d.getDate()+14); return localKey(d); }
+  return null;
+}
+
 function updateTodoBadge(items) {
   const badge = document.getElementById('todoBadge');
   const overdue = items.filter(i=>!i.completed&&getDueBucket(i.dueDate)==='overdue').length;
-  const pending = items.filter(i=>!i.completed&&i.source!=='flagged').length;
+  const pending = items.filter(i=>!i.completed).length;
   if (overdue>0){badge.textContent=overdue;badge.style.display='';}
   else if(pending>0){badge.textContent=pending;badge.style.display='';}
   else{badge.style.display='none';}
+}
+
+function makeCatOptions(selectedId) {
+  return CATEGORIES.map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.label}</option>`).join('');
+}
+
+let dragItemId = null;
+let dragGhost = null;
+let dragPlaceholder = null;
+
+function getDragAfterElement(container, y) {
+  const els = [...container.querySelectorAll('.todo-item:not(.dragging)')];
+  return els.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height/2;
+    if (offset < 0 && offset > closest.offset) return { offset, element: child };
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 async function renderTodo() {
   const items = await getTodoItems();
   updateTodoBadge(items);
   populateTodoCatSelect();
+
   const groups = {
-    overdue:{ label:'⚠️ Overdue', cls:'overdue', items:[] },
-    today:  { label:'📅 Today',   cls:'today',   items:[] },
-    week:   { label:'📆 This Week',cls:'week',    items:[] },
-    later:  { label:'🗓 Later',    cls:'later',   items:[] },
+    overdue:{ label:'⚠️ Overdue',       cls:'overdue', items:[] },
+    today:  { label:'📅 Today',          cls:'today',   items:[] },
+    week:   { label:'📆 This Week',      cls:'week',    items:[] },
+    later:  { label:'🗓 Later',           cls:'later',   items:[] },
     flagged:{ label:'📧 Flagged Emails', cls:'flagged', items:[] },
   };
+
   for (const item of items) {
-    if (item.source==='flagged'){ groups.flagged.items.push(item); continue; }
     if (item.completed) continue;
+    if (item.source==='flagged') { groups.flagged.items.push(item); continue; }
     groups[getDueBucket(item.dueDate)].items.push(item);
   }
-  const doneToday = items.filter(i=>i.completed&&i.completedDate===getTodayKey());
+  const doneToday = items.filter(i=>i.completed && i.completedDate===getTodayKey());
+
   const container = document.getElementById('todoGroups');
-  container.innerHTML='';
-  const collapseKey='st_todoCollapse';
-  let cs={};
-  try{cs=JSON.parse(localStorage.getItem(collapseKey)||'{}');}catch{}
-  ['overdue','today','week','later','flagged'].forEach(gKey=>{
-    if(cs[gKey]===undefined)cs[gKey]=true;
-    const g=groups[gKey];
-    const allItems=gKey==='later'?[...g.items,...doneToday]:g.items;
-    const card=document.createElement('div');
-    card.className=`card todo-group ${g.cls} ${cs[gKey]?'open':''}`;
-    const header=document.createElement('div');
-    header.className='todo-group-header';
-    header.innerHTML=`<span class="todo-group-title">${g.label}</span><span class="todo-group-count">${allItems.length}</span><span class="todo-group-arrow">›</span>`;
-    header.addEventListener('click',()=>{card.classList.toggle('open');cs[gKey]=card.classList.contains('open');localStorage.setItem(collapseKey,JSON.stringify(cs));});
-    const body=document.createElement('div');
-    body.className='todo-group-body';
-    if(!allItems.length){body.innerHTML=`<div class="todo-empty">Nothing here 🎉</div>`;}
-    else{allItems.forEach(item=>renderTodoItem(item,body));}
-    card.appendChild(header);card.appendChild(body);container.appendChild(card);
+  container.innerHTML = '';
+  const collapseKey = 'st_todoCollapse';
+  let cs = {};
+  try { cs = JSON.parse(localStorage.getItem(collapseKey)||'{}'); } catch {}
+
+  ['overdue','today','week','later','flagged'].forEach(gKey => {
+    if (cs[gKey]===undefined) cs[gKey] = true;
+    const g = groups[gKey];
+    const allItems = gKey==='later' ? [...g.items,...doneToday] : g.items;
+
+    const card = document.createElement('div');
+    card.className = `card todo-group ${g.cls} ${cs[gKey]?'open':''}`;
+    card.dataset.bucket = gKey;
+
+    const header = document.createElement('div');
+    header.className = 'todo-group-header';
+    header.innerHTML = `<span class="todo-group-title">${g.label}</span><span class="todo-group-count">${allItems.length}</span><span class="todo-group-arrow">›</span>`;
+    header.addEventListener('click', () => {
+      card.classList.toggle('open');
+      cs[gKey] = card.classList.contains('open');
+      localStorage.setItem(collapseKey, JSON.stringify(cs));
+    });
+
+    const body = document.createElement('div');
+    body.className = 'todo-group-body';
+    body.dataset.bucket = gKey;
+
+    body.addEventListener('dragover', e => {
+      e.preventDefault();
+      body.classList.add('drag-over');
+      if (!card.classList.contains('open')) card.classList.add('open');
+      const afterEl = getDragAfterElement(body, e.clientY);
+      if (dragPlaceholder) {
+        if (afterEl) body.insertBefore(dragPlaceholder, afterEl);
+        else body.appendChild(dragPlaceholder);
+      }
+    });
+    body.addEventListener('dragleave', e => {
+      if (!body.contains(e.relatedTarget)) body.classList.remove('drag-over');
+    });
+    body.addEventListener('drop', async e => {
+      e.preventDefault();
+      body.classList.remove('drag-over');
+      if (!dragItemId) return;
+      const targetBucket = body.dataset.bucket;
+      if (targetBucket === 'flagged') return;
+      const newDate = bucketToDate(targetBucket);
+      const items = await getTodoItems();
+      const idx = items.findIndex(i=>i.id===dragItemId);
+      if (idx !== -1) {
+        items[idx].dueDate = newDate;
+        if (items[idx].completed && targetBucket !== 'later') {
+          items[idx].completed = false;
+          items[idx].completedDate = null;
+        }
+        await saveTodoItems(items);
+      }
+      dragItemId = null;
+      renderTodo();
+    });
+
+    if (!allItems.length) {
+      const empty = document.createElement('div');
+      empty.className = 'todo-empty';
+      empty.textContent = 'Nothing here — drag tasks here';
+      body.appendChild(empty);
+    } else {
+      allItems.forEach(item => renderTodoItem(item, body));
+    }
+
+    card.appendChild(header);
+    card.appendChild(body);
+    container.appendChild(card);
   });
 }
 
 function renderTodoItem(item, container) {
-  const cat=getCat(item.catId),isRunning=activeTask&&activeTask.id===item.id,bucket=getDueBucket(item.dueDate);
-  const dueLabel=item.dueDate?(bucket==='overdue'?`⚠️ ${item.dueDate}`:bucket==='today'?'Due today':`Due ${item.dueDate}`):'';
-  const div=document.createElement('div');
-  div.className=`todo-item${isRunning?' running':''}${item.completed?' completed':''}`;
-  div.innerHTML=`<div class="todo-check" data-id="${item.id}">${item.completed?'✓':''}</div>
+  const cat = getCat(item.catId);
+  const isRunning = activeTask && activeTask.id === item.id;
+  const totalSessionSecs = (item.sessions||[]).reduce((s,sess)=>s+(sess.duration||0),0);
+
+  const div = document.createElement('div');
+  div.className = `todo-item${isRunning?' running':''}${item.completed?' completed':''}`;
+  div.draggable = !item.completed;
+  div.dataset.id = item.id;
+
+  div.addEventListener('dragstart', e => {
+    dragItemId = item.id;
+    div.classList.add('dragging');
+    dragGhost = div.cloneNode(true);
+    dragGhost.style.cssText = `position:fixed;top:-9999px;opacity:.85;pointer-events:none;width:${div.offsetWidth}px;background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);`;
+    document.body.appendChild(dragGhost);
+    e.dataTransfer.setDragImage(dragGhost, 30, 20);
+    e.dataTransfer.effectAllowed = 'move';
+    dragPlaceholder = document.createElement('div');
+    dragPlaceholder.className = 'todo-drag-placeholder';
+    dragPlaceholder.style.cssText = `height:${div.offsetHeight}px;background:var(--mint);border:2px dashed var(--sage);border-radius:var(--radius-sm);margin:3px 0;transition:height .15s;`;
+    setTimeout(() => { div.style.opacity = '0.35'; }, 0);
+  });
+
+  div.addEventListener('dragend', () => {
+    div.classList.remove('dragging');
+    div.style.opacity = '';
+    if (dragGhost) { dragGhost.remove(); dragGhost = null; }
+    if (dragPlaceholder && dragPlaceholder.parentNode) { dragPlaceholder.remove(); dragPlaceholder = null; }
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  });
+
+  const catOptsHtml = makeCatOptions(item.catId);
+  const dueVal = item.dueDate || '';
+
+  div.innerHTML = `
+    <div class="todo-drag-handle" title="Drag to move">⠿</div>
+    <div class="todo-check${item.completed?' done':''}" data-id="${item.id}">${item.completed?'✓':''}</div>
     <div class="todo-info">
-      <div class="todo-title">${item.title}</div>
+      <input class="todo-title-input${item.completed?' strikethrough':''}" value="${item.title.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" data-id="${item.id}" ${item.completed?'disabled':''} placeholder="Task name">
       <div class="todo-meta">
-        <div class="todo-cat-dot" style="background:${cat.color}"></div>
-        <span class="todo-cat-label">${cat.label}</span>
-        ${dueLabel?`<span class="todo-due ${bucket==='overdue'?'overdue':''}">${dueLabel}</span>`:''}
-        ${item.source==='flagged'?'<span class="todo-source">📧 Email</span>':''}
+        <select class="todo-cat-select" data-id="${item.id}" style="border-left:3px solid ${cat.color}">${catOptsHtml}</select>
+        <input class="todo-date-input" type="date" value="${dueVal}" data-id="${item.id}" title="Due date" ${item.completed?'disabled':''}>
+        ${item.source==='flagged'?'<span class="todo-source">📧</span>':''}
+        ${totalSessionSecs>0?`<span class="todo-total-time">⏱ ${fmtSecs(totalSessionSecs)}</span>`:''}
       </div>
     </div>
     <div class="todo-actions">
-      ${!item.completed&&item.source!=='flagged'?`<button class="todo-start-btn ${isRunning?'stop':''}" data-id="${item.id}">${isRunning?'■ Stop':'▶ Start'}</button>`:''}
-      <button class="todo-del-btn" data-id="${item.id}">✕</button>
+      ${!item.completed?`<button class="todo-start-btn ${isRunning?'stop':''}" data-id="${item.id}" title="${isRunning?'Stop':'Start focus'}">${isRunning?'■':'▶'}</button>`:''}
+      <button class="todo-del-btn" data-id="${item.id}" title="Delete">✕</button>
     </div>`;
-  div.querySelector('.todo-check').addEventListener('click',async()=>{
-    const items=await getTodoItems(),idx=items.findIndex(i=>i.id===item.id);if(idx===-1)return;
-    if(!items[idx].completed){items[idx].completed=true;items[idx].completedDate=getTodayKey();if(isRunning)await stopTask(true);}
-    else{items[idx].completed=false;items[idx].completedDate=null;}
-    await saveTodoItems(items);renderTodo();
+
+  // Inline title edit
+  div.querySelector('.todo-title-input').addEventListener('change', async e => {
+    const newTitle = e.target.value.trim();
+    if (!newTitle) return;
+    const items = await getTodoItems();
+    const idx = items.findIndex(i=>i.id===item.id);
+    if (idx !== -1) { items[idx].title = newTitle; await saveTodoItems(items); }
   });
-  div.querySelector('.todo-start-btn')?.addEventListener('click',async()=>{if(isRunning){await stopTask(true);}else{await startTask(item.id);}});
-  div.querySelector('.todo-del-btn').addEventListener('click',async()=>{if(!confirm('Delete this task?'))return;if(isRunning)await stopTask(false);const items=await getTodoItems();await saveTodoItems(items.filter(i=>i.id!==item.id));renderTodo();});
+
+  // Category change
+  div.querySelector('.todo-cat-select').addEventListener('change', async e => {
+    const items = await getTodoItems();
+    const idx = items.findIndex(i=>i.id===item.id);
+    if (idx !== -1) {
+      items[idx].catId = e.target.value;
+      await saveTodoItems(items);
+      renderTodo();
+    }
+  });
+
+  // Date change
+  div.querySelector('.todo-date-input').addEventListener('change', async e => {
+    const items = await getTodoItems();
+    const idx = items.findIndex(i=>i.id===item.id);
+    if (idx !== -1) { items[idx].dueDate = e.target.value || null; await saveTodoItems(items); renderTodo(); }
+  });
+
+  // Complete toggle
+  div.querySelector('.todo-check').addEventListener('click', async () => {
+    const items = await getTodoItems();
+    const idx = items.findIndex(i=>i.id===item.id);
+    if (idx===-1) return;
+    if (!items[idx].completed) {
+      items[idx].completed = true;
+      items[idx].completedDate = getTodayKey();
+      if (isRunning) await stopTask('done');
+    } else {
+      items[idx].completed = false;
+      items[idx].completedDate = null;
+    }
+    await saveTodoItems(items);
+    renderTodo();
+  });
+
+  // Start/stop
+  div.querySelector('.todo-start-btn')?.addEventListener('click', async () => {
+    if (isRunning) await stopTask('done');
+    else await startTask(item.id);
+  });
+
+  // Delete
+  div.querySelector('.todo-del-btn').addEventListener('click', async () => {
+    if (!confirm('Delete this task?')) return;
+    if (isRunning) await stopTask('cancel');
+    const items = await getTodoItems();
+    await saveTodoItems(items.filter(i=>i.id!==item.id));
+    renderTodo();
+  });
+
   container.appendChild(div);
 }
 
-document.getElementById('todoAddBtn').addEventListener('click',async()=>{
-  const title=document.getElementById('todoTitleInput').value.trim();
-  const catId=document.getElementById('todoCatSelect').value||'uncategorised';
-  const dueDate=document.getElementById('todoDateInput').value||null;
-  if(!title){document.getElementById('todoTitleInput').focus();return;}
-  const items=await getTodoItems();
-  items.push({id:uid(),title,catId,dueDate,completed:false,completedDate:null,createdAt:Date.now(),source:'manual'});
+document.getElementById('todoAddBtn').addEventListener('click', async () => {
+  const title = document.getElementById('todoTitleInput').value.trim();
+  const catId = document.getElementById('todoCatSelect').value || 'uncategorised';
+  const dueDate = document.getElementById('todoDateInput').value || null;
+  if (!title) { document.getElementById('todoTitleInput').focus(); return; }
+  const items = await getTodoItems();
+  items.push({ id:uid(), title, catId, dueDate, completed:false, completedDate:null, sessions:[], createdAt:Date.now(), source:'manual' });
   await saveTodoItems(items);
-  document.getElementById('todoTitleInput').value='';
-  document.getElementById('todoDateInput').value='';
+  document.getElementById('todoTitleInput').value = '';
+  document.getElementById('todoDateInput').value = '';
   renderTodo();
 });
-document.getElementById('todoTitleInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('todoAddBtn').click();});
+document.getElementById('todoTitleInput').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('todoAddBtn').click(); });
 
 // ─── Sync flagged emails ──────────────────────────────────────
 async function syncFlaggedEmails() {

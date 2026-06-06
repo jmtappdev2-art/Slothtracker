@@ -489,6 +489,26 @@
     .habit-edit-btn { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--grey-mid); cursor: pointer; font-size: 14px; opacity: 0; transition: opacity .15s; }
     .habit-card:hover .habit-edit-btn { opacity: 1; }
 
+
+    /* ══ TODO ENHANCED ══ */
+    .todo-drag-handle { color:var(--grey-mid); cursor:grab; font-size:16px; padding:0 6px; flex-shrink:0; user-select:none; }
+    .todo-drag-handle:active { cursor:grabbing; }
+    .todo-item.dragging { opacity:.35; }
+    .todo-group-body.drag-over { background:var(--mint); border-radius:var(--radius-sm); }
+    .todo-title-input { background:transparent; border:none; font-family:'Inter',sans-serif; font-size:13px; font-weight:500; color:var(--forest); width:100%; padding:0; outline:none; }
+    .todo-title-input:focus { background:var(--cream-dark); border-radius:6px; padding:2px 6px; }
+    .todo-title-input.strikethrough { text-decoration:line-through; color:var(--grey); }
+    .todo-title-input:disabled { cursor:default; }
+    .todo-cat-select { font-family:'Inter',sans-serif; font-size:11px; color:var(--forest); background:var(--cream-dark); border:none; border-radius:6px; padding:2px 6px; cursor:pointer; border-left-width:3px; border-left-style:solid; }
+    .todo-cat-select:focus { outline:none; background:#fff; }
+    .todo-date-input { font-family:'Inter',sans-serif; font-size:11px; color:var(--grey); background:transparent; border:none; padding:0; cursor:pointer; }
+    .todo-date-input:focus { outline:none; background:var(--cream-dark); border-radius:6px; padding:2px 4px; }
+    .todo-date-input:disabled { cursor:default; }
+    .todo-total-time { font-size:11px; color:var(--sage); font-weight:600; }
+    .todo-check.done { background:var(--sage); border-color:var(--sage); color:#fff; }
+    .focus-pause-btn { background:rgba(255,255,255,0.15); border:1.5px solid rgba(255,255,255,0.3); color:#fff; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; padding:11px 20px; border-radius:var(--radius-sm); cursor:pointer; transition:all .15s; }
+    .focus-pause-btn:hover { background:rgba(255,255,255,0.25); }
+
     /* ══ SECTIONS ══ */
     .section-hidden{display:none;}
     .section-visible{display:block;}
@@ -543,6 +563,7 @@
     </div>
     <div class="focus-controls">
       <button class="focus-stop-btn" id="focusCancelBtn">✕ Cancel</button>
+      <button class="focus-pause-btn" id="focusPauseBtn">⏸ Pause</button>
       <button class="focus-done-btn" id="focusDoneBtn">✓ Done</button>
     </div>
   </div>

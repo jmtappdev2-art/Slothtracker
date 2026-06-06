@@ -97,41 +97,19 @@ async function deleteManualTask(id) { const t=await getManualTasks();await store
 async function getTodoItems() { const r=await store.get('todoItems');return r.todoItems||[]; }
 async function saveTodoItems(items) { await store.set({todoItems:items}); }
 
-// ─── Sloth SVG ───────────────────────────────────────────────
-function buildSlothSVG(state='idle', size=90) {
-  const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
-  const eyesClosed = state === 'idle';
-  const celebrating = state === 'celebrate';
-  return `<svg width="${size}" height="${size}" viewBox="0 0 100 105" class="${animClass}" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="50" cy="72" rx="24" ry="20" fill="#C4A882"/>
-    <circle cx="50" cy="40" r="22" fill="#C4A882"/>
-    <ellipse cx="50" cy="45" rx="13" ry="11" fill="#E8D4BC"/>
-    <circle cx="28" cy="28" r="9" fill="#A08060"/>
-    <circle cx="28" cy="28" r="6" fill="#C4A882"/>
-    <circle cx="72" cy="28" r="9" fill="#A08060"/>
-    <circle cx="72" cy="28" r="6" fill="#C4A882"/>
-    ${eyesClosed
-      ? '<line x1="38" y1="39" x2="46" y2="39" stroke="#5C3D1E" stroke-width="2.5" stroke-linecap="round"/><line x1="54" y1="39" x2="62" y2="39" stroke="#5C3D1E" stroke-width="2.5" stroke-linecap="round"/>'
-      : '<circle cx="42" cy="39" r="5" fill="#5C3D1E"/><circle cx="58" cy="39" r="5" fill="#5C3D1E"/><circle cx="40" cy="37" r="2" fill="white" opacity="0.7"/><circle cx="56" cy="37" r="2" fill="white" opacity="0.7"/>'}
-    <ellipse cx="50" cy="47" rx="3" ry="2" fill="#8B6340"/>
-    ${celebrating
-      ? '<path d="M43,52 Q50,59 57,52" stroke="#8B6340" stroke-width="2" fill="none" stroke-linecap="round"/>'
-      : state==='active'
-        ? '<circle cx="50" cy="52" r="3" fill="#8B6340" opacity="0.5"/>'
-        : '<path d="M44,52 Q50,56 56,52" stroke="#8B6340" stroke-width="1.5" fill="none" stroke-linecap="round"/>'}
-    <ellipse cx="22" cy="68" rx="8" ry="16" fill="#A08060" transform="rotate(${celebrating?-50:state==='active'?-20:12} 22 68)"/>
-    <ellipse cx="78" cy="68" rx="8" ry="16" fill="#A08060" transform="rotate(${celebrating?50:state==='active'?20:-12} 78 68)"/>
-    <line x1="15" y1="83" x2="11" y2="90" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="19" y1="85" x2="16" y2="92" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="85" y1="83" x2="89" y2="90" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="81" y1="85" x2="84" y2="92" stroke="#8B6340" stroke-width="1.5" stroke-linecap="round"/>
-    ${celebrating ? '<text x="64" y="18" font-size="14">✨</text><text x="18" y="22" font-size="12">⭐</text><text x="70" y="35" font-size="10">🎉</text>' : ''}
-  </svg>`;
-}
+// ─── Sloth Images ────────────────────────────────────────────
+const SLOTH_IMGS = {
+  idle:      'sloth-idle.png',
+  active:    'sloth-active.png',
+  celebrate: 'sloth-celebrate.png',
+};
 
 function setSloth(wrapperId, state, size) {
   const el = document.getElementById(wrapperId);
-  if (el) el.innerHTML = buildSlothSVG(state, size);
+  if (!el) return;
+  const src = SLOTH_IMGS[state] || SLOTH_IMGS.idle;
+  const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
+  el.innerHTML = `<img src="${src}" width="${size}" height="${size}" style="object-fit:contain;display:block;" class="${animClass}" alt="Time Sloth">`;
 }
 
 // ─── Active Task & Focus Screen ──────────────────────────────

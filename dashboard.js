@@ -129,8 +129,8 @@ async function saveActiveTask() { await store.set({activeTask}); }
 
 function updateBanner() {
   const allIdle = !activeTask;
-  setSloth('heroSlothWrap', allIdle ? 'idle' : 'active', 100);
-  setSloth('companionSlothWrap', allIdle ? 'idle' : 'active', 72);
+  setSloth('heroSlothWrap', allIdle ? 'idle' : 'active', 180);
+  setSloth('companionSlothWrap', allIdle ? 'idle' : 'active', 140);
   const banner = document.getElementById('activeTaskBanner');
   if (!activeTask) { banner.classList.remove('visible'); return; }
   banner.classList.add('visible');
@@ -189,11 +189,11 @@ async function stopTask(log=true) {
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   closeFocusScreen();
   // Celebrate
-  setSloth('heroSlothWrap', 'celebrate', 100);
-  setSloth('companionSlothWrap', 'celebrate', 72);
+  setSloth('heroSlothWrap', 'celebrate', 180);
+  setSloth('companionSlothWrap', 'celebrate', 140);
   setTimeout(() => {
-    setSloth('heroSlothWrap', 'idle', 100);
-    setSloth('companionSlothWrap', 'idle', 72);
+    setSloth('heroSlothWrap', 'idle', 180);
+    setSloth('companionSlothWrap', 'idle', 140);
   }, 2500);
   updateBanner();
   renderTodo();
@@ -209,7 +209,7 @@ function openFocusScreen(taskName) {
   document.getElementById('focusTaskName').textContent = taskName || 'Focus Session';
   document.getElementById('focusSessionNum').textContent = focusSessionCount + 1;
   document.getElementById('focusProgressFill').style.width = '0%';
-  setSloth('focusSlothWrap', 'active', 110);
+  setSloth('focusSlothWrap', 'active', 200);
   const q = QUOTES[Math.floor(Math.random()*QUOTES.length)];
   document.getElementById('focusQuote').textContent = q;
 }
@@ -832,9 +832,9 @@ document.querySelectorAll('.slot-tab').forEach(btn=>{btn.addEventListener('click
     _cachedSettings = await getSettings();
     await loadActiveTask();
     populateTodoCatSelect();
-    setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 100);
-    setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 72);
-    setSloth('focusSlothWrap', 'active', 110);
+    setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 180);
+    setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 140);
+    setSloth('focusSlothWrap', 'active', 200);
     showSection('overview');
     if (wasCallback) showSection('outlook');
     setInterval(async()=>{

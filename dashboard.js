@@ -113,7 +113,11 @@ function setSloth(wrapperId, state, size) {
   if (!el) return;
   const src = SLOTH_IMGS[state] || SLOTH_IMGS.idle;
   const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
-  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;max-width:100%;" class="${animClass}" alt="Time Sloth">`;
+  // mix-blend-mode:multiply removes white backgrounds on dark surfaces
+  // On light backgrounds we use normal blending
+  const isDarkBg = ['heroSlothWrap','companionSlothWrap','focusSlothWrap'].includes(wrapperId);
+  const blend = isDarkBg ? 'mix-blend-mode:multiply;' : '';
+  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;max-width:100%;${blend}filter:drop-shadow(0 4px 12px rgba(0,0,0,0.15));" class="${animClass}" alt="Time Sloth">`;
 }
 
 // ─── Active Task & Focus Screen ──────────────────────────────

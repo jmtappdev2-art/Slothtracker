@@ -513,6 +513,111 @@
     .sloth-idle img, .sloth-active img, .sloth-celebrate img,
     .sloth-idle, .sloth-active, .sloth-celebrate { background: transparent !important; }
     #heroSlothWrap img, #companionSlothWrap img, #focusSlothWrap img { background: transparent !important; }
+
+    /* ══ HABITS REDESIGN ══ */
+    .habit-hero {
+      background: linear-gradient(140deg, var(--forest) 0%, var(--forest-mid) 55%, #4a7c2a 100%);
+      border-radius: var(--radius); padding: 28px 32px; margin-bottom: 20px;
+      display: flex; align-items: center; gap: 28px; box-shadow: var(--shadow-lg);
+      position: relative; overflow: hidden; flex-wrap: wrap;
+    }
+    .habit-hero::before { content:''; position:absolute; top:-40px; right:-40px; width:200px; height:200px; background:rgba(255,255,255,0.03); border-radius:50%; }
+    .habit-hero-left { flex: 1; min-width: 200px; }
+    .habit-hero-title { font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#fff; margin-bottom:6px; }
+    .habit-hero-sub { font-size:13px; color:rgba(255,255,255,0.6); margin-bottom:16px; line-height:1.5; }
+    .habit-hero-stats { display:flex; gap:20px; flex-wrap:wrap; }
+    .habit-hero-stat-val { font-family:'Plus Jakarta Sans',sans-serif; font-size:24px; font-weight:800; color:#fff; }
+    .habit-hero-stat-label { font-size:10px; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:.8px; font-weight:600; }
+    .habit-hero-centre { display:flex; flex-direction:column; align-items:center; gap:8px; flex-shrink:0; }
+    .habit-evo-badge { font-family:'Plus Jakarta Sans',sans-serif; font-size:13px; font-weight:700; color:var(--gold-light); background:rgba(232,160,32,0.15); border:1px solid rgba(232,160,32,0.3); padding:4px 14px; border-radius:20px; }
+    .habit-evo-next { font-size:11px; color:rgba(255,255,255,0.5); }
+    .habit-hero-right { display:flex; flex-direction:column; align-items:flex-end; gap:14px; flex-shrink:0; }
+    .habit-today-progress { min-width:180px; }
+    .habit-today-label { font-size:10px; text-transform:uppercase; letter-spacing:.8px; color:rgba(255,255,255,0.5); font-weight:600; margin-bottom:4px; }
+    .habit-today-nums { font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:700; color:var(--gold-light); margin-bottom:6px; }
+    .habit-today-bar { height:8px; background:rgba(255,255,255,0.12); border-radius:20px; overflow:hidden; }
+    .habit-today-fill { height:100%; background:linear-gradient(90deg,var(--gold),var(--gold-light)); border-radius:20px; transition:width .6s ease; }
+
+    .habit-stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+    .habit-stat-card { background:#fff; border:1px solid var(--grey-light); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); text-align:center; }
+    .habit-stat-icon { font-size:24px; margin-bottom:8px; }
+    .habit-stat-val { font-family:'Plus Jakarta Sans',sans-serif; font-size:26px; font-weight:800; color:var(--forest); line-height:1; }
+    .habit-stat-label { font-size:10px; text-transform:uppercase; letter-spacing:.8px; color:var(--grey); font-weight:600; margin-top:4px; }
+
+    .habit-group-section { margin-bottom:24px; }
+    .habit-group-label { font-family:'Plus Jakarta Sans',sans-serif; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px; padding-left:2px; }
+    .habit-cards-grid { display:flex; flex-direction:column; gap:12px; }
+
+    .habit-wide-card {
+      background:#fff; border:1.5px solid var(--grey-light); border-radius:var(--radius);
+      box-shadow:var(--shadow); display:flex; align-items:center; gap:16px; padding:18px 20px;
+      transition:all .2s;
+    }
+    .habit-wide-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-md); }
+    .habit-wide-card.done { background:var(--mint); }
+    .habit-card-left { flex-shrink:0; }
+    .habit-card-ring { position:relative; width:72px; height:72px; }
+    .habit-card-ring-inner { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:26px; }
+    .habit-card-body { flex:1; min-width:0; }
+    .habit-card-top-row { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px; }
+    .habit-card-name { font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:800; color:var(--forest); margin-bottom:4px; }
+    .habit-card-meta { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .habit-card-freq { font-size:11px; color:var(--grey); background:var(--cream-dark); padding:2px 8px; border-radius:20px; }
+    .habit-card-streak { font-size:11px; font-weight:700; color:var(--gold); }
+    .habit-card-stats-row { display:flex; gap:16px; margin-bottom:10px; }
+    .habit-card-stat-val { font-family:'Plus Jakarta Sans',sans-serif; font-size:14px; font-weight:700; color:var(--forest); }
+    .habit-card-stat-label { font-size:10px; color:var(--grey); }
+    .habit-week-tracker { display:flex; gap:5px; }
+    .habit-week-day { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; background:var(--cream-dark); color:var(--grey); transition:all .15s; }
+    .habit-week-day.done { color:#fff; }
+    .habit-week-day.today { outline:2px solid var(--gold); outline-offset:2px; }
+    .habit-week-day.missed { position:relative; }
+    .habit-week-day.missed::after { content:'×'; position:absolute; font-size:14px; color:#ef4444; opacity:.6; }
+    .habit-card-action { flex-shrink:0; }
+    .habit-complete-btn { font-family:'Plus Jakarta Sans',sans-serif; font-size:12px; font-weight:700; padding:10px 16px; border-radius:var(--radius-sm); border:2px solid; background:transparent; cursor:pointer; transition:all .15s; white-space:nowrap; }
+    .habit-complete-btn.done { color:#fff !important; }
+    .habit-complete-btn:hover { opacity:.85; transform:translateY(-1px); }
+    .habit-edit-btn { background:none; border:none; color:var(--grey-mid); cursor:pointer; font-size:18px; padding:4px 8px; border-radius:6px; transition:all .15s; }
+    .habit-edit-btn:hover { background:var(--cream-dark); }
+
+    .habit-achievements-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; padding:20px; }
+    .habit-achievement { background:var(--cream); border:1.5px solid var(--grey-light); border-radius:var(--radius-sm); padding:16px; text-align:center; position:relative; transition:all .15s; }
+    .habit-achievement:not(.locked) { border-color:var(--gold); background:linear-gradient(135deg,#fffbeb,#fef3c7); }
+    .habit-achievement.locked { opacity:.5; filter:grayscale(0.5); }
+    .habit-ach-icon { font-size:28px; margin-bottom:8px; }
+    .habit-ach-label { font-family:'Plus Jakarta Sans',sans-serif; font-size:12px; font-weight:700; color:var(--forest); margin-bottom:4px; }
+    .habit-ach-desc { font-size:10px; color:var(--grey); line-height:1.4; }
+    .habit-ach-lock { position:absolute; top:8px; right:8px; font-size:12px; }
+
+    .habit-cal-day { aspect-ratio:1; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; background:var(--cream-dark); color:var(--grey); }
+    .habit-cal-day.done { color:#fff; }
+    .habit-cal-day.missed { opacity:.5; }
+    .habit-cal-day.today { outline:2px solid var(--gold); }
+    .habit-cal-day.future { opacity:.25; }
+    .habit-cal-header { font-size:10px; font-weight:700; color:var(--grey); text-align:center; padding-bottom:4px; text-transform:uppercase; }
+    .habit-colour-swatch { width:28px; height:28px; border-radius:50%; cursor:pointer; border:3px solid transparent; transition:all .15s; flex-shrink:0; }
+    .habit-colour-swatch.selected { border-color:var(--forest); transform:scale(1.2); }
+    .habit-emoji-btn { font-size:18px; cursor:pointer; padding:4px; border-radius:6px; transition:background .1s; text-align:center; }
+    .habit-emoji-btn:hover { background:var(--mint); }
+    .habit-emoji-btn.selected { background:var(--mint); outline:2px solid var(--sage); }
+
+    @media(max-width:768px){
+      .habit-hero { flex-direction:column; text-align:center; }
+      .habit-hero-right { align-items:center; width:100%; }
+      .habit-hero-stats { justify-content:center; }
+      .habit-stats-row { grid-template-columns:1fr 1fr; }
+      .habit-wide-card { flex-direction:column; text-align:center; }
+      .habit-card-top-row { flex-direction:column; align-items:center; }
+      .habit-card-stats-row { justify-content:center; }
+      .habit-week-tracker { justify-content:center; }
+      .habit-achievements-grid { grid-template-columns:1fr 1fr; }
+      .habit-today-progress { width:100%; }
+    }
+    @media(max-width:480px){
+      .habit-stats-row { grid-template-columns:1fr 1fr; }
+      .habit-achievements-grid { grid-template-columns:1fr 1fr; }
+    }
+
     /* ══ SECTIONS ══ */
     .section-hidden{display:none;}
     .section-visible{display:block;}
@@ -701,86 +806,69 @@
 
         <!-- ── Habits ── -->
         <section id="section-habits" class="section-hidden">
-          <!-- Evolution banner -->
-          <div style="background:linear-gradient(135deg,var(--forest) 0%,var(--forest-mid) 100%);border-radius:var(--radius);padding:20px 28px;margin-bottom:24px;display:flex;align-items:center;gap:24px;box-shadow:var(--shadow-lg);overflow:hidden;position:relative;">
-            <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;background:rgba(255,255,255,0.03);border-radius:50%;"></div>
-            <img src="Evolutuon sloth .png" style="height:120px;width:auto;object-fit:contain;flex-shrink:0;position:relative;z-index:1;" alt="Evolution Sloth">
-            <div style="position:relative;z-index:1;">
-              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:20px;font-weight:800;color:#fff;margin-bottom:6px;">Build Your Habits 🔥</div>
-              <div style="font-size:13px;color:rgba(255,255,255,0.65);line-height:1.5;margin-bottom:12px;">Small consistent actions create extraordinary results.<br>Track daily, weekly and monthly habits here.</div>
-              <button class="btn btn-gold" id="addHabitBtn" style="font-size:13px;">+ New Habit</button>
-            </div>
-          </div>
 
-          <!-- Add habit modal -->
-          <div id="habitModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:20px;padding:28px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+          <!-- Habit Modal -->
+          <div id="habitModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+            <div style="background:#fff;border-radius:20px;padding:28px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2);max-height:90vh;overflow-y:auto;">
               <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:18px;font-weight:800;color:var(--forest);margin-bottom:20px;" id="habitModalTitle">New Habit</div>
-
-              <!-- Emoji picker -->
-              <div style="margin-bottom:16px;">
+              <div style="margin-bottom:14px;">
                 <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:8px;">Icon</div>
-                <div id="habitEmojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;max-height:120px;overflow-y:auto;padding:4px;background:var(--cream-dark);border-radius:12px;">
-                </div>
-                <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
-                  <span style="font-size:10px;color:var(--grey);">Selected:</span>
-                  <span id="habitEmojiPreview" style="font-size:24px;">🌟</span>
-                </div>
+                <div id="habitEmojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:5px;max-height:110px;overflow-y:auto;padding:6px;background:var(--cream-dark);border-radius:12px;"></div>
+                <div style="margin-top:6px;display:flex;align-items:center;gap:8px;"><span style="font-size:10px;color:var(--grey);">Selected:</span><span id="habitEmojiPreview" style="font-size:22px;">🌟</span></div>
               </div>
-
-              <!-- Name -->
-              <div style="margin-bottom:16px;">
-                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:6px;">Name</div>
-                <input id="habitNameInput" class="form-input" placeholder="e.g. Exercise, Read, Meditate" style="width:100%">
+              <div style="margin-bottom:14px;">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:6px;">Habit Name</div>
+                <input id="habitNameInput" class="form-input" placeholder="e.g. Morning Run, Read 20 mins" style="width:100%">
               </div>
-
-              <!-- Colour -->
-              <div style="margin-bottom:16px;">
+              <div style="margin-bottom:14px;">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:6px;">Category</div>
+                <select id="habitGroupSelect" class="form-select" style="width:100%;">
+                  <option value="health">🏃 Health</option>
+                  <option value="productivity">🎯 Productivity</option>
+                  <option value="personal">👤 Personal</option>
+                  <option value="other">⭐ Other</option>
+                </select>
+              </div>
+              <div style="margin-bottom:14px;">
                 <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:8px;">Colour</div>
                 <div id="habitColourGrid" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
               </div>
-
-              <!-- Frequency -->
               <div style="margin-bottom:20px;">
                 <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;margin-bottom:8px;">Frequency</div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="habitFreq" value="daily" checked> Daily</label>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="habitFreq" value="weekly"> <span id="weeklyLabel">X times/week</span></label>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="habitFreq" value="monthly"> Monthly</label>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="habitFreq" value="daily" checked> Daily</label>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="habitFreq" value="weekly"> X times/week</label>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="habitFreq" value="monthly"> Monthly</label>
                 </div>
-                <div id="weeklyCountWrap" style="display:none;margin-top:10px;display:flex;align-items:center;gap:10px;">
+                <div id="weeklyCountWrap" style="display:none;margin-top:10px;align-items:center;gap:10px;">
                   <span style="font-size:13px;color:var(--grey);">Times per week:</span>
-                  <button id="weeklyMinus" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--grey-light);background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">−</button>
+                  <button id="weeklyMinus" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--grey-light);background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;font-weight:700;">−</button>
                   <span id="weeklyCount" style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:16px;min-width:20px;text-align:center;">3</span>
-                  <button id="weeklyPlus" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--grey-light);background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">+</button>
+                  <button id="weeklyPlus" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--grey-light);background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;font-weight:700;">+</button>
                 </div>
               </div>
-
-              <div style="display:flex;gap:10px;">
+              <div style="display:flex;gap:8px;">
                 <button class="btn" id="habitModalCancel" style="flex:1">Cancel</button>
-                <button class="btn btn-sage" id="habitModalSave" style="flex:1">Save Habit</button>
+                <button class="btn" id="habitDeleteBtn" style="flex:1;border-color:#dc2626;color:#dc2626;display:none">Delete</button>
+                <button class="btn btn-sage" id="habitModalSave" style="flex:1">Save</button>
               </div>
             </div>
           </div>
 
-          <!-- Habit grid -->
-          <div id="habitGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:28px;"></div>
-
-          <!-- Habit calendar detail -->
+          <!-- Calendar detail modal -->
           <div id="habitCalendarDetail" style="display:none;">
-            <div class="card">
+            <div class="card" style="margin-bottom:20px;">
               <div class="card-header">
-                <div>
-                  <div class="card-title" id="habitCalTitle">Habit Calendar</div>
-                  <div class="card-sub" id="habitCalSub"></div>
-                </div>
+                <div><div class="card-title" id="habitCalTitle">Habit Calendar</div><div class="card-sub" id="habitCalSub"></div></div>
                 <button class="btn" id="habitCalClose" style="padding:6px 12px;font-size:12px;">✕ Close</button>
               </div>
-              <div style="padding:20px;">
-                <div id="habitCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;"></div>
-              </div>
+              <div style="padding:20px;"><div id="habitCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;"></div></div>
             </div>
           </div>
+
+          <!-- Main content rendered by JS -->
+          <div id="habitPageContent"></div>
+
         </section>
 
         <!-- ── Categories ── -->

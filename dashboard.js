@@ -1050,6 +1050,30 @@ document.querySelectorAll('.slot-tab').forEach(btn=>{btn.addEventListener('click
 const HABIT_EMOJIS = ['🏃','💪','🧘','📚','✍️','🎯','💧','🥗','😴','🌞','🚴','🎵','🧠','💊','🌿','🍎','🏋️','🤸','📝','🎨','🧹','💰','🙏','❤️','⭐','🔥','🌱','🏆'];
 const HABIT_COLOURS = ['#6B9E4E','#E8A020','#818cf8','#f472b6','#38bdf8','#f59e0b','#ef4444','#a78bfa','#34d399','#fb923c','#2D5016','#8B6340'];
 
+const HABIT_CATEGORY_GROUPS = [
+  { id:'health',       label:'🏃 Health',       colour:'#34d399' },
+  { id:'productivity', label:'🎯 Productivity',  colour:'#6B9E4E' },
+  { id:'personal',     label:'👤 Personal',      colour:'#818cf8' },
+  { id:'other',        label:'⭐ Other',          colour:'#E8A020' },
+];
+
+const HABIT_MOTIVATIONS = [
+  '"One day becomes a week."','"Consistency beats intensity."',
+  '"Small actions create extraordinary results."','"Slow and steady focus."',
+  '"Show up. Every day."','"Progress is a practice."','"Build the life you want, one habit at a time."'
+];
+
+const ACHIEVEMENTS_DEF = [
+  { id:'first_habit',   icon:'🌱', label:'First Habit',      desc:'Created your first habit',            check:(h,l)=>h.length>=1 },
+  { id:'first_complete',icon:'✅', label:'First Complete',   desc:'Completed a habit for the first time', check:(h,l)=>Object.values(l).some(d=>Object.keys(d).length>=1) },
+  { id:'streak_7',      icon:'🔥', label:'7 Day Streak',     desc:'Maintained a 7-day streak',            check:(h,l)=>h.some(hb=>getHabitStreak(hb.id,hb.frequency,hb.timesPerWeek,l)>=7) },
+  { id:'streak_30',     icon:'💎', label:'30 Day Streak',    desc:'Maintained a 30-day streak',           check:(h,l)=>h.some(hb=>getHabitStreak(hb.id,hb.frequency,hb.timesPerWeek,l)>=30) },
+  { id:'habits_3',      icon:'🎯', label:'Triple Threat',    desc:'Created 3 or more habits',             check:(h,l)=>h.length>=3 },
+  { id:'perfect_week',  icon:'🏆', label:'Perfect Week',     desc:'Completed all habits for 7 days straight', check:(h,l)=>{ if(!h.length)return false; const today=getTodayKey(); for(let i=0;i<7;i++){const d=new Date();d.setDate(d.getDate()-i);const k=localKey(d);const allDone=h.filter(hb=>hb.frequency==='daily').every(hb=>l[hb.id]?.[k]);if(!allDone)return false;} return h.filter(hb=>hb.frequency==='daily').length>0; }},
+  { id:'early_adopter', icon:'🦥', label:'Early Sloth',      desc:'Used Time Sloth in the first week',    check:(h,l)=>true },
+  { id:'habits_5',      icon:'🌟', label:'Habit Master',     desc:'Created 5 or more habits',             check:(h,l)=>h.length>=5 },
+];
+
 async function getHabits() { const r = await store.get('habits'); return r.habits || []; }
 async function saveHabits(h) { await store.set({ habits: h }); }
 async function getHabitLogs() { const r = await store.get('habitLogs'); return r.habitLogs || {}; }
@@ -1058,72 +1082,80 @@ async function saveHabitLogs(l) { await store.set({ habitLogs: l }); }
 function getHabitStreak(habitId, frequency, timesPerWeek, logs) {
   const today = getTodayKey();
   let streak = 0;
-
   if (frequency === 'daily') {
     let d = new Date();
     for (let i = 0; i < 365; i++) {
       const key = localKey(d);
       if (key > today) { d.setDate(d.getDate()-1); continue; }
       if (logs[habitId]?.[key]) { streak++; d.setDate(d.getDate()-1); }
-      else if (key === today) { d.setDate(d.getDate()-1); } // today not done yet = ok
+      else if (key === today) { d.setDate(d.getDate()-1); }
       else break;
     }
   } else if (frequency === 'weekly') {
-    // Count consecutive weeks where target met
     const tw = timesPerWeek || 3;
     let weekStart = new Date();
     const dow = weekStart.getDay();
     weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1));
     for (let w = 0; w < 52; w++) {
       let count = 0;
-      for (let d = 0; d < 7; d++) {
-        const day = new Date(weekStart);
-        day.setDate(weekStart.getDate() + d);
-        const key = localKey(day);
-        if (key > today) continue;
-        if (logs[habitId]?.[key]) count++;
-      }
-      if (count >= tw || (w === 0 && count > 0)) { streak++; weekStart.setDate(weekStart.getDate() - 7); }
-      else if (w === 0) break; // this week not started yet is ok only if no logs
+      for (let d = 0; d < 7; d++) { const day = new Date(weekStart); day.setDate(weekStart.getDate()+d); const key = localKey(day); if(key<=today && logs[habitId]?.[key]) count++; }
+      if (count >= tw || (w === 0 && count > 0)) { streak++; weekStart.setDate(weekStart.getDate()-7); }
       else break;
     }
   } else if (frequency === 'monthly') {
-    // Count consecutive months with at least 1 completion
     let d = new Date();
     for (let m = 0; m < 24; m++) {
-      const year = d.getFullYear(), month = d.getMonth();
-      const daysInMonth = new Date(year, month+1, 0).getDate();
-      let found = false;
-      for (let day = 1; day <= daysInMonth; day++) {
-        const key = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-        if (key > today) continue;
-        if (logs[habitId]?.[key]) { found = true; break; }
-      }
-      if (found) { streak++; d.setMonth(d.getMonth()-1); }
-      else if (m === 0) { d.setMonth(d.getMonth()-1); } // current month not done yet = ok
-      else break;
+      const year=d.getFullYear(),month=d.getMonth(),daysInMonth=new Date(year,month+1,0).getDate();
+      let found=false;
+      for(let day=1;day<=daysInMonth;day++){const key=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;if(key<=today&&logs[habitId]?.[key]){found=true;break;}}
+      if(found){streak++;d.setMonth(d.getMonth()-1);}else if(m===0){d.setMonth(d.getMonth()-1);}else break;
     }
   }
   return streak;
 }
 
-function isHabitDoneToday(habitId, logs) {
-  return !!(logs[habitId]?.[getTodayKey()]);
+function getLongestStreak(habitId, frequency, timesPerWeek, logs) {
+  // Check all historical records for max streak
+  const entries = Object.keys(logs[habitId]||{}).sort();
+  if (!entries.length) return 0;
+  let max = 0, current = 1;
+  for (let i = 1; i < entries.length; i++) {
+    const prev = new Date(entries[i-1]+'T12:00:00'), curr = new Date(entries[i]+'T12:00:00');
+    const diff = (curr - prev) / 86400000;
+    if (diff === 1) { current++; } else { max = Math.max(max, current); current = 1; }
+  }
+  return Math.max(max, current);
 }
+
+function getCompletionRate(habitId, logs) {
+  const entries = Object.keys(logs[habitId]||{});
+  if (!entries.length) return 0;
+  const sorted = entries.sort();
+  const first = new Date(sorted[0]+'T12:00:00');
+  const today = new Date(getTodayKey()+'T12:00:00');
+  const daysSince = Math.max(1, Math.round((today - first) / 86400000) + 1);
+  return Math.round((entries.length / daysSince) * 100);
+}
+
+function getWeekDays7() {
+  const days = [];
+  for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate()-i); days.push({ key: localKey(d), label: d.toLocaleDateString('en-GB',{weekday:'short'})[0] }); }
+  return days;
+}
+
+function isHabitDoneToday(habitId, logs) { return !!(logs[habitId]?.[getTodayKey()]); }
 
 async function toggleHabitToday(habitId) {
   const logs = await getHabitLogs();
   const today = getTodayKey();
   if (!logs[habitId]) logs[habitId] = {};
-  if (logs[habitId][today]) {
-    delete logs[habitId][today];
-  } else {
-    logs[habitId][today] = true;
-  }
+  if (logs[habitId][today]) delete logs[habitId][today];
+  else logs[habitId][today] = true;
   await saveHabitLogs(logs);
   renderHabits();
 }
 
+// ── Habit modal state
 let selectedHabitEmoji = '🌟';
 let selectedHabitColour = '#6B9E4E';
 let weeklyCountVal = 3;
@@ -1133,115 +1165,206 @@ let viewingHabitId = null;
 async function renderHabits() {
   const habits = await getHabits();
   const logs = await getHabitLogs();
-  const grid = document.getElementById('habitGrid');
-  if (!grid) return;
+  const today = getTodayKey();
+  const container = document.getElementById('habitPageContent');
+  if (!container) return;
+
+  const doneToday = habits.filter(h => isHabitDoneToday(h.id, logs)).length;
+  const totalActive = habits.filter(h => !h.completed).length;
+  const allStreaks = habits.map(h => getHabitStreak(h.id, h.frequency, h.timesPerWeek, logs));
+  const maxStreak = allStreaks.length ? Math.max(...allStreaks) : 0;
+  const avgRate = habits.length ? Math.round(habits.reduce((s,h)=>s+getCompletionRate(h.id,logs),0)/habits.length) : 0;
+  const longestEver = habits.length ? Math.max(...habits.map(h=>getLongestStreak(h.id,h.frequency,h.timesPerWeek,logs))) : 0;
+
+  // Sloth evolution based on max streak
+  const evoStage = maxStreak >= 30 ? 3 : maxStreak >= 14 ? 2 : maxStreak >= 7 ? 1 : 0;
+  const evoNames = ['Sleepy Sloth','Focused Sloth','Active Sloth','Hero Sloth'];
+  const evoImages = ['sloth-idle.png', 'Locked in sloth .png', 'Running sloth .png', 'Business Sloth .png'];
+  const evoNext = [7,14,30,null];
+  const daysToNext = evoNext[evoStage] ? evoNext[evoStage] - maxStreak : null;
+
+  // Achievements
+  const unlocked = ACHIEVEMENTS_DEF.filter(a => a.check(habits, logs));
+
+  container.innerHTML = `
+    <!-- Hero -->
+    <div class="habit-hero">
+      <div class="habit-hero-left">
+        <div class="habit-hero-title">Build Your Habits 🔥</div>
+        <div class="habit-hero-sub">Small consistent actions create extraordinary results.</div>
+        <div class="habit-hero-stats">
+          <div class="habit-hero-stat"><div class="habit-hero-stat-val">${doneToday}/${totalActive}</div><div class="habit-hero-stat-label">Done Today</div></div>
+          <div class="habit-hero-stat"><div class="habit-hero-stat-val">${maxStreak}</div><div class="habit-hero-stat-label">Best Streak</div></div>
+          <div class="habit-hero-stat"><div class="habit-hero-stat-val">${avgRate}%</div><div class="habit-hero-stat-label">Completion</div></div>
+        </div>
+      </div>
+      <div class="habit-hero-centre">
+        <img src="${evoImages[evoStage]}" style="height:140px;width:auto;object-fit:contain;filter:drop-shadow(0 8px 24px rgba(0,0,0,.2));" alt="${evoNames[evoStage]}">
+        <div class="habit-evo-badge">${evoNames[evoStage]}</div>
+        ${daysToNext ? `<div class="habit-evo-next">Next: ${evoNames[evoStage+1]} in ${daysToNext} day${daysToNext!==1?'s':''}</div>` : '<div class="habit-evo-next">🏆 Maximum Evolution!</div>'}
+      </div>
+      <div class="habit-hero-right">
+        <button class="btn btn-gold" id="addHabitBtn" style="font-size:14px;padding:11px 22px;font-weight:800;">+ New Habit</button>
+        <div class="habit-today-progress">
+          <div class="habit-today-label">Today's Goal</div>
+          <div class="habit-today-nums">${doneToday} / ${totalActive} Habits</div>
+          <div class="habit-today-bar"><div class="habit-today-fill" style="width:${totalActive?Math.round(doneToday/totalActive*100):0}%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="habit-stats-row">
+      <div class="habit-stat-card"><div class="habit-stat-icon">🔥</div><div class="habit-stat-val">${maxStreak}</div><div class="habit-stat-label">Current Streak</div></div>
+      <div class="habit-stat-card"><div class="habit-stat-icon">✅</div><div class="habit-stat-val">${doneToday} / ${totalActive}</div><div class="habit-stat-label">Completed Today</div></div>
+      <div class="habit-stat-card"><div class="habit-stat-icon">📈</div><div class="habit-stat-val">${avgRate}%</div><div class="habit-stat-label">Completion Rate</div></div>
+      <div class="habit-stat-card"><div class="habit-stat-icon">🏆</div><div class="habit-stat-val">${longestEver}</div><div class="habit-stat-label">Longest Streak</div></div>
+    </div>
+
+    <!-- Habit groups -->
+    <div id="habitGroupsContainer"></div>
+
+    <!-- Achievements -->
+    <div class="card" style="margin-top:8px;">
+      <div class="card-header"><div class="card-title">🏆 Achievements</div><div class="card-sub">${unlocked.length} / ${ACHIEVEMENTS_DEF.length} unlocked</div></div>
+      <div class="habit-achievements-grid">
+        ${ACHIEVEMENTS_DEF.map(a => {
+          const earned = unlocked.find(u=>u.id===a.id);
+          return `<div class="habit-achievement${earned?'':' locked'}">
+            <div class="habit-ach-icon">${a.icon}</div>
+            <div class="habit-ach-label">${a.label}</div>
+            <div class="habit-ach-desc">${a.desc}</div>
+            ${!earned?'<div class="habit-ach-lock">🔒</div>':''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+
+  // Wire add button
+  document.getElementById('addHabitBtn').addEventListener('click', () => {
+    document.getElementById('habitDeleteBtn').style.display = 'none';
+    openHabitModal();
+  });
+
+  // Render habit groups
+  renderHabitGroups(habits, logs);
+}
+
+function renderHabitGroups(habits, logs) {
+  const container = document.getElementById('habitGroupsContainer');
+  if (!container) return;
 
   if (!habits.length) {
-    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--grey);">
-      <div style="font-size:48px;margin-bottom:12px;">🌱</div>
-      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:16px;font-weight:700;color:var(--forest);margin-bottom:6px;">No habits yet</div>
-      <div style="font-size:13px;">Add your first habit to start building consistency.</div>
-    </div>`;
+    container.innerHTML = `
+      <div class="card" style="margin-bottom:20px;">
+        <div style="text-align:center;padding:60px 24px;display:flex;flex-direction:column;align-items:center;gap:16px;">
+          <img src="Locked in sloth .png" style="height:120px;width:auto;filter:drop-shadow(0 4px 16px rgba(0,0,0,.1));" alt="">
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:20px;font-weight:800;color:var(--forest);">Your sloth is ready to grow.</div>
+          <div style="font-size:14px;color:var(--grey);line-height:1.6;max-width:360px;">Create your first habit and start building momentum.<br>Small steps, taken consistently, create extraordinary results.</div>
+          <button class="btn btn-gold" style="padding:12px 28px;font-size:14px;font-weight:800;" onclick="document.getElementById('addHabitBtn').click()">+ Create First Habit</button>
+        </div>
+      </div>`;
     return;
   }
 
-  grid.innerHTML = '';
-  habits.forEach(habit => {
-    const done = isHabitDoneToday(habit.id, logs);
-    const streak = getHabitStreak(habit.id, habit.frequency, habit.timesPerWeek, logs);
-    const freqLabel = habit.frequency === 'daily' ? 'Daily' : habit.frequency === 'monthly' ? 'Monthly' : `${habit.timesPerWeek}x / week`;
+  // Group habits by category
+  const grouped = {};
+  HABIT_CATEGORY_GROUPS.forEach(g => { grouped[g.id] = []; });
+  habits.forEach(h => {
+    const gid = h.groupId || 'other';
+    if (!grouped[gid]) grouped[gid] = [];
+    grouped[gid].push(h);
+  });
 
-    const card = document.createElement('div');
-    card.className = `habit-card${done ? ' completed-today' : ''}`;
-    if (done) card.style.background = habit.colour + '18';
-    if (done) card.style.borderColor = habit.colour;
+  container.innerHTML = '';
+  HABIT_CATEGORY_GROUPS.forEach(group => {
+    const groupHabits = grouped[group.id] || [];
+    if (!groupHabits.length) return;
 
-    card.innerHTML = `
-      <button class="habit-edit-btn" data-id="${habit.id}">⋯</button>
-      <div class="habit-circle" style="color:${habit.colour};background:${done ? habit.colour : 'transparent'};">
-        ${done ? '<span style="font-size:36px;">✓</span>' : `<span>${habit.emoji}</span>`}
-        ${streak > 0 ? `<div class="habit-streak-badge">${streak}</div>` : ''}
-      </div>
-      <div class="habit-name">${habit.name}</div>
-      <div class="habit-freq">${freqLabel}</div>`;
+    const section = document.createElement('div');
+    section.className = 'habit-group-section';
+    section.innerHTML = `<div class="habit-group-label" style="color:${group.colour}">${group.label}</div>`;
 
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.habit-edit-btn')) return;
-      toggleHabitToday(habit.id);
-    });
-
-    card.querySelector('.habit-edit-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      openHabitModal(habit);
-    });
-
-    // Long press / double click to see calendar
-    let pressTimer;
-    card.addEventListener('mousedown', () => { pressTimer = setTimeout(() => showHabitCalendar(habit.id), 500); });
-    card.addEventListener('mouseup', () => clearTimeout(pressTimer));
-    card.addEventListener('mouseleave', () => clearTimeout(pressTimer));
-
-    grid.appendChild(card);
+    const grid = document.createElement('div');
+    grid.className = 'habit-cards-grid';
+    groupHabits.forEach(habit => grid.appendChild(buildHabitCard(habit, logs)));
+    section.appendChild(grid);
+    container.appendChild(section);
   });
 }
 
-function showHabitCalendar(habitId) {
-  viewingHabitId = habitId;
-  const detail = document.getElementById('habitCalendarDetail');
-  detail.style.display = 'block';
-  renderHabitCalendar(habitId);
+function buildHabitCard(habit, logs) {
+  const done = isHabitDoneToday(habit.id, logs);
+  const streak = getHabitStreak(habit.id, habit.frequency, habit.timesPerWeek, logs);
+  const rate = getCompletionRate(habit.id, logs);
+  const longest = getLongestStreak(habit.id, habit.frequency, habit.timesPerWeek, logs);
+  const weekDays = getWeekDays7();
+  const nextMilestone = streak < 7 ? 7 : streak < 14 ? 14 : streak < 30 ? 30 : streak < 100 ? 100 : null;
+  const freqLabel = habit.frequency==='daily'?'Daily':habit.frequency==='monthly'?'Monthly':`${habit.timesPerWeek}× / week`;
+
+  const card = document.createElement('div');
+  card.className = `habit-wide-card${done?' done':''}`;
+  if (done) card.style.borderColor = habit.colour;
+  if (done) card.style.background = habit.colour + '08';
+
+  // Progress ring SVG
+  const r = 28, circ = 2*Math.PI*r;
+  const pct = Math.min(100, rate);
+  const dash = (pct/100)*circ;
+
+  card.innerHTML = `
+    <div class="habit-card-left">
+      <div class="habit-card-ring" style="--ring-colour:${habit.colour}">
+        <svg width="72" height="72" viewBox="0 0 72 72">
+          <circle cx="36" cy="36" r="${r}" fill="none" stroke="#EDE8E0" stroke-width="6"/>
+          <circle cx="36" cy="36" r="${r}" fill="none" stroke="${habit.colour}" stroke-width="6"
+            stroke-dasharray="${dash} ${circ}" stroke-dashoffset="${circ/4}"
+            stroke-linecap="round" transform="rotate(-90 36 36)"/>
+        </svg>
+        <div class="habit-card-ring-inner">${done?'✓':habit.emoji}</div>
+      </div>
+    </div>
+    <div class="habit-card-body">
+      <div class="habit-card-top-row">
+        <div>
+          <div class="habit-card-name">${habit.name}</div>
+          <div class="habit-card-meta">
+            <span class="habit-card-freq">${freqLabel}</span>
+            ${streak>0?`<span class="habit-card-streak">🔥 ${streak} day streak</span>`:''}
+          </div>
+        </div>
+        <button class="habit-edit-btn" data-id="${habit.id}">⋯</button>
+      </div>
+      <div class="habit-card-stats-row">
+        <div class="habit-card-stat"><div class="habit-card-stat-val">${rate}%</div><div class="habit-card-stat-label">Success</div></div>
+        <div class="habit-card-stat"><div class="habit-card-stat-val">${longest}</div><div class="habit-card-stat-label">Best</div></div>
+        ${nextMilestone?`<div class="habit-card-stat"><div class="habit-card-stat-val">${nextMilestone-streak}d</div><div class="habit-card-stat-label">To ${nextMilestone} days</div></div>`:'<div class="habit-card-stat"><div class="habit-card-stat-val">🏆</div><div class="habit-card-stat-label">Legend!</div></div>'}
+      </div>
+      <!-- Weekly tracker -->
+      <div class="habit-week-tracker">
+        ${weekDays.map(day => {
+          const done2 = logs[habit.id]?.[day.key];
+          const isToday2 = day.key === getTodayKey();
+          const isPast = day.key < getTodayKey();
+          return `<div class="habit-week-day${done2?' done':''}${isToday2?' today':''}${isPast&&!done2?' missed':''}" style="${done2?'background:'+habit.colour+';':''}" title="${day.key}">${day.label}</div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="habit-card-action">
+      <button class="habit-complete-btn${done?' done':''}" data-id="${habit.id}" style="${done?'background:'+habit.colour+';border-color:'+habit.colour+';':' border-color:'+habit.colour+';color:'+habit.colour+';'}">
+        ${done ? '✓ Done!' : 'Complete Today'}
+      </button>
+    </div>`;
+
+  card.querySelector('.habit-edit-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    openHabitModal(habit);
+  });
+  card.querySelector('.habit-complete-btn').addEventListener('click', () => toggleHabitToday(habit.id));
+
+  return card;
 }
-
-async function renderHabitCalendar(habitId) {
-  const habits = await getHabits();
-  const logs = await getHabitLogs();
-  const habit = habits.find(h => h.id === habitId);
-  if (!habit) return;
-
-  document.getElementById('habitCalTitle').textContent = `${habit.emoji} ${habit.name}`;
-  document.getElementById('habitCalSub').textContent = `Streak: ${getHabitStreak(habitId, habit.frequency, habit.timesPerWeek, logs)} days`;
-
-  const now = new Date();
-  const year = now.getFullYear(), month = now.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month+1, 0).getDate();
-  const startDow = (firstDay.getDay() + 6) % 7; // Mon=0
-  const today = getTodayKey();
-
-  const calGrid = document.getElementById('habitCalGrid');
-  const monthName = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-
-  let html = `<div style="grid-column:1/-1;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;color:var(--forest);margin-bottom:8px;">${monthName}</div>`;
-  ['M','T','W','T','F','S','S'].forEach(d => { html += `<div class="habit-cal-header">${d}</div>`; });
-
-  // Empty cells before first day
-  for (let i = 0; i < startDow; i++) html += `<div></div>`;
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    const key = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const done = !!(logs[habitId]?.[key]);
-    const isToday = key === today;
-    const isFuture = key > today;
-    const isPast = key < today && !isFuture;
-
-    let cls = 'habit-cal-day';
-    let style = '';
-    let content = day;
-
-    if (isFuture) { cls += ' future'; }
-    else if (done) { cls += ' done'; style = `background:${habit.colour};`; content = '✓'; }
-    else if (isPast) { cls += ' missed'; content = day; }
-    if (isToday) cls += ' today';
-
-    html += `<div class="${cls}" style="${style}">${content}</div>`;
-  }
-
-  calGrid.innerHTML = html;
-}
-
-document.getElementById('habitCalClose').addEventListener('click', () => {
-  document.getElementById('habitCalendarDetail').style.display = 'none';
-});
 
 function openHabitModal(habitToEdit = null) {
   editingHabitId = habitToEdit ? habitToEdit.id : null;
@@ -1251,103 +1374,109 @@ function openHabitModal(habitToEdit = null) {
 
   document.getElementById('habitModalTitle').textContent = habitToEdit ? 'Edit Habit' : 'New Habit';
   document.getElementById('habitNameInput').value = habitToEdit ? habitToEdit.name : '';
+  document.getElementById('habitDeleteBtn').style.display = habitToEdit ? '' : 'none';
 
-  // Frequency
+  // Group select
+  const groupSel = document.getElementById('habitGroupSelect');
+  if (groupSel) groupSel.value = habitToEdit?.groupId || 'other';
+
   const freq = habitToEdit?.frequency || 'daily';
   document.querySelectorAll('input[name="habitFreq"]').forEach(r => { r.checked = r.value === freq; });
   document.getElementById('weeklyCountWrap').style.display = freq === 'weekly' ? 'flex' : 'none';
   document.getElementById('weeklyCount').textContent = weeklyCountVal;
 
-  // Emoji grid
   const emojiGrid = document.getElementById('habitEmojiGrid');
   emojiGrid.innerHTML = HABIT_EMOJIS.map(e =>
-    `<div class="habit-emoji-btn${e === selectedHabitEmoji ? ' selected' : ''}" data-emoji="${e}">${e}</div>`
-  ).join('');
+    `<div class="habit-emoji-btn${e===selectedHabitEmoji?' selected':''}" data-emoji="${e}">${e}</div>`).join('');
   emojiGrid.querySelectorAll('.habit-emoji-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       selectedHabitEmoji = btn.getAttribute('data-emoji');
-      emojiGrid.querySelectorAll('.habit-emoji-btn').forEach(b => b.classList.remove('selected'));
+      emojiGrid.querySelectorAll('.habit-emoji-btn').forEach(b=>b.classList.remove('selected'));
       btn.classList.add('selected');
       document.getElementById('habitEmojiPreview').textContent = selectedHabitEmoji;
     });
   });
   document.getElementById('habitEmojiPreview').textContent = selectedHabitEmoji;
 
-  // Colour grid
   const colourGrid = document.getElementById('habitColourGrid');
   colourGrid.innerHTML = HABIT_COLOURS.map(c =>
-    `<div class="habit-colour-swatch${c === selectedHabitColour ? ' selected' : ''}" style="background:${c}" data-colour="${c}"></div>`
-  ).join('');
+    `<div class="habit-colour-swatch${c===selectedHabitColour?' selected':''}" style="background:${c}" data-colour="${c}"></div>`).join('');
   colourGrid.querySelectorAll('.habit-colour-swatch').forEach(sw => {
     sw.addEventListener('click', () => {
       selectedHabitColour = sw.getAttribute('data-colour');
-      colourGrid.querySelectorAll('.habit-colour-swatch').forEach(s => s.classList.remove('selected'));
+      colourGrid.querySelectorAll('.habit-colour-swatch').forEach(s=>s.classList.remove('selected'));
       sw.classList.add('selected');
     });
   });
 
-  const modal = document.getElementById('habitModal');
-  modal.style.display = 'flex';
+  document.getElementById('habitModal').style.display = 'flex';
 }
 
-// Frequency radio toggle
 document.querySelectorAll('input[name="habitFreq"]').forEach(r => {
   r.addEventListener('change', () => {
-    document.getElementById('weeklyCountWrap').style.display = r.value === 'weekly' ? 'flex' : 'none';
+    document.getElementById('weeklyCountWrap').style.display = r.value==='weekly' ? 'flex' : 'none';
   });
 });
-
-// Weekly count +/-
-document.getElementById('weeklyMinus').addEventListener('click', () => {
-  if (weeklyCountVal > 1) { weeklyCountVal--; document.getElementById('weeklyCount').textContent = weeklyCountVal; }
-});
-document.getElementById('weeklyPlus').addEventListener('click', () => {
-  if (weeklyCountVal < 7) { weeklyCountVal++; document.getElementById('weeklyCount').textContent = weeklyCountVal; }
-});
-
-document.getElementById('habitModalCancel').addEventListener('click', () => {
-  document.getElementById('habitModal').style.display = 'none';
-});
+document.getElementById('weeklyMinus').addEventListener('click', () => { if(weeklyCountVal>1){weeklyCountVal--;document.getElementById('weeklyCount').textContent=weeklyCountVal;} });
+document.getElementById('weeklyPlus').addEventListener('click', () => { if(weeklyCountVal<7){weeklyCountVal++;document.getElementById('weeklyCount').textContent=weeklyCountVal;} });
+document.getElementById('habitModalCancel').addEventListener('click', () => { document.getElementById('habitModal').style.display='none'; });
 
 document.getElementById('habitModalSave').addEventListener('click', async () => {
   const name = document.getElementById('habitNameInput').value.trim();
   if (!name) { document.getElementById('habitNameInput').focus(); return; }
   const frequency = document.querySelector('input[name="habitFreq"]:checked').value;
-
+  const groupId = document.getElementById('habitGroupSelect')?.value || 'other';
   const habits = await getHabits();
   if (editingHabitId) {
-    const idx = habits.findIndex(h => h.id === editingHabitId);
-    if (idx !== -1) {
-      habits[idx] = { ...habits[idx], name, emoji: selectedHabitEmoji, colour: selectedHabitColour, frequency, timesPerWeek: weeklyCountVal };
-    }
+    const idx = habits.findIndex(h=>h.id===editingHabitId);
+    if (idx!==-1) habits[idx] = { ...habits[idx], name, emoji:selectedHabitEmoji, colour:selectedHabitColour, frequency, timesPerWeek:weeklyCountVal, groupId };
   } else {
-    habits.push({ id: uid(), name, emoji: selectedHabitEmoji, colour: selectedHabitColour, frequency, timesPerWeek: weeklyCountVal, createdAt: Date.now() });
+    habits.push({ id:uid(), name, emoji:selectedHabitEmoji, colour:selectedHabitColour, frequency, timesPerWeek:weeklyCountVal, groupId, createdAt:Date.now() });
   }
   await saveHabits(habits);
   document.getElementById('habitModal').style.display = 'none';
   renderHabits();
 });
 
-// Delete habit from edit modal - add delete button
-document.getElementById('habitModalSave').insertAdjacentHTML('beforebegin',
-  '<button class="btn" id="habitDeleteBtn" style="flex:1;border-color:#dc2626;color:#dc2626;display:none">Delete</button>');
-
 document.getElementById('habitDeleteBtn').addEventListener('click', async () => {
-  if (!editingHabitId) return;
-  if (!confirm('Delete this habit and all its history?')) return;
-  const habits = (await getHabits()).filter(h => h.id !== editingHabitId);
-  await saveHabits(habits);
+  if (!editingHabitId || !confirm('Delete this habit and all its history?')) return;
+  await saveHabits((await getHabits()).filter(h=>h.id!==editingHabitId));
   document.getElementById('habitModal').style.display = 'none';
   renderHabits();
 });
 
-// Show delete button when editing
-const origOpen = openHabitModal;
+async function renderHabitCalendar(habitId) {
+  const habits = await getHabits();
+  const logs = await getHabitLogs();
+  const habit = habits.find(h=>h.id===habitId);
+  if (!habit) return;
+  document.getElementById('habitCalTitle').textContent = `${habit.emoji} ${habit.name}`;
+  document.getElementById('habitCalSub').textContent = `Streak: ${getHabitStreak(habitId,habit.frequency,habit.timesPerWeek,logs)} · Rate: ${getCompletionRate(habitId,logs)}%`;
+  const now=new Date(),year=now.getFullYear(),month=now.getMonth();
+  const firstDay=new Date(year,month,1),daysInMonth=new Date(year,month+1,0).getDate();
+  const startDow=(firstDay.getDay()+6)%7,today=getTodayKey();
+  const calGrid=document.getElementById('habitCalGrid');
+  const monthName=now.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  let html=`<div style="grid-column:1/-1;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;color:var(--forest);margin-bottom:8px;">${monthName}</div>`;
+  ['M','T','W','T','F','S','S'].forEach(d=>{html+=`<div class="habit-cal-header">${d}</div>`;});
+  for(let i=0;i<startDow;i++)html+=`<div></div>`;
+  for(let day=1;day<=daysInMonth;day++){
+    const key=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const done=!!(logs[habitId]?.[key]),isToday=key===today,isFuture=key>today,isPast=key<today;
+    let cls='habit-cal-day',style='',content=day;
+    if(isFuture){cls+=' future';}
+    else if(done){cls+=' done';style=`background:${habit.colour};`;content='✓';}
+    else if(isPast){cls+=' missed';content=day;}
+    if(isToday)cls+=' today';
+    html+=`<div class="${cls}" style="${style}">${content}</div>`;
+  }
+  calGrid.innerHTML=html;
+}
 
-document.getElementById('addHabitBtn').addEventListener('click', () => {
-  document.getElementById('habitDeleteBtn').style.display = 'none';
-  openHabitModal();
+document.getElementById('habitCalClose').addEventListener('click', () => {
+  document.getElementById('habitCalendarDetail').style.display='none';
 });
+
 
 // ─── Boot ─────────────────────────────────────────────────────
 (async()=>{

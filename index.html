@@ -685,6 +685,39 @@
 </div>
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
+
+<!-- ── Auth Screen ── -->
+<div id="authScreen" style="display:none;position:fixed;inset:0;z-index:500;background:linear-gradient(140deg,var(--forest) 0%,var(--forest-mid) 60%,#4a7c2a 100%);align-items:center;justify-content:center;flex-direction:column;">
+  <div style="background:#fff;border-radius:24px;padding:36px 32px;max-width:400px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.25);">
+    <div style="text-align:center;margin-bottom:24px;">
+      <img src="Timesloth Mian logo.png" style="height:64px;width:auto;margin-bottom:12px;filter:drop-shadow(0 4px 12px rgba(45,80,22,0.2));" alt="">
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:var(--forest);">time <span style="color:var(--sage);">sloth</span></div>
+      <div style="font-size:12px;color:var(--grey);margin-top:2px;">Slow and Steady Focus.</div>
+    </div>
+
+    <div style="display:flex;background:var(--cream-dark);border-radius:var(--radius-sm);padding:3px;gap:2px;margin-bottom:20px;">
+      <button id="authTabLogin" onclick="switchAuthTab('login')" style="flex:1;padding:8px;border-radius:9px;border:none;background:#fff;color:var(--forest);font-family:'Inter',sans-serif;font-size:13px;font-weight:700;cursor:pointer;box-shadow:var(--shadow);">Sign In</button>
+      <button id="authTabSignup" onclick="switchAuthTab('signup')" style="flex:1;padding:8px;border-radius:9px;border:none;background:transparent;color:var(--grey);font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Sign Up</button>
+    </div>
+
+    <div id="authError" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:10px 14px;color:#dc2626;font-size:12px;margin-bottom:14px;"></div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <input id="authEmail" type="email" placeholder="Email address" style="font-family:'Inter',sans-serif;font-size:14px;color:var(--forest);background:var(--cream-dark);border:1.5px solid var(--grey-light);border-radius:var(--radius-sm);padding:11px 14px;transition:all .15s;outline:none;" onfocus="this.style.borderColor='var(--sage)'" onblur="this.style.borderColor='var(--grey-light)'">
+      <input id="authPassword" type="password" placeholder="Password" style="font-family:'Inter',sans-serif;font-size:14px;color:var(--forest);background:var(--cream-dark);border:1.5px solid var(--grey-light);border-radius:var(--radius-sm);padding:11px 14px;transition:all .15s;outline:none;" onfocus="this.style.borderColor='var(--sage)'" onblur="this.style.borderColor='var(--grey-light)'">
+      <button id="authSubmitBtn" onclick="handleAuthSubmit()" style="background:var(--forest);color:#fff;border:none;border-radius:var(--radius-sm);padding:13px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:800;cursor:pointer;transition:all .15s;">Sign In</button>
+    </div>
+
+    <div id="authSignupNote" style="display:none;font-size:11px;color:var(--grey);text-align:center;margin-top:12px;line-height:1.5;">By signing up you agree to use Time Sloth responsibly.<br>Your data is stored securely and privately.</div>
+  </div>
+</div>
+
+<!-- ── User bar (shown when logged in) ── -->
+<div id="userBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:90;background:var(--forest);border-top:1px solid rgba(255,255,255,0.08);padding:8px 16px;display:flex;align-items:center;justify-content:space-between;">
+  <div style="font-size:12px;color:rgba(255,255,255,0.6);">Signed in as <strong style="color:var(--gold-light);" id="userBarEmail"></strong></div>
+  <button onclick="handleSignOut()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;font-family:'Inter',sans-serif;font-size:11px;font-weight:600;padding:5px 12px;border-radius:8px;cursor:pointer;">Sign out</button>
+</div>
+
 <div class="layout">
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-logo">
@@ -995,6 +1028,7 @@
   </main>
 </div>
 
+<script src="supabase.js"></script>
 <script src="dashboard.js"></script>
 </body>
 </html>

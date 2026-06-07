@@ -81,21 +81,27 @@ function getCat(id) { return CATEGORIES.find(c=>c.id===id)||CATEGORIES[0]; }
 function aggregateLogs(logs,dateKeys) { const t={};for(const k of dateKeys)for(const[d,s]of Object.entries(logs[k]||{}))t[d]=(t[d]||0)+s; return t; }
 
 // ─── Settings ────────────────────────────────────────────────
-async function getSettings() {
-  const r = await store.get('settings');
-  return r.settings || { name: '', dailyGoalMins: 120, sessionLengthMins: 25 };
-}
-async function saveSettings(s) { await store.set({ settings: s }); }
+async function getSettings() { return dbGetSettings(); }
+async function saveSettings(s) { await dbSaveSettings(s); }
 
 // ─── Storage helpers ─────────────────────────────────────────
-async function getData() { return store.get(['logs','domainCategories','sessions','categories','manualTasks','todoItems']); }
-async function loadCategories() { const r=await store.get('categories');CATEGORIES=(r.categories&&r.categories.length)?r.categories:[...DEFAULT_CATEGORIES];if(!r.categories)await store.set({categories:CATEGORIES}); }
-async function saveCategories() { await store.set({categories:CATEGORIES}); }
-async function getManualTasks() { const r=await store.get('manualTasks');return r.manualTasks||[]; }
-async function saveManualTask(task) { const t=await getManualTasks();t.push(task);await store.set({manualTasks:t}); }
-async function deleteManualTask(id) { const t=await getManualTasks();await store.set({manualTasks:t.filter(x=>x.id!==id)}); }
-async function getTodoItems() { const r=await store.get('todoItems');return r.todoItems||[]; }
-async function saveTodoItems(items) { await store.set({todoItems:items}); }
+async function getData() {
+  const [manualTasks, todoItems, cats] = await Promise.all([
+    dbGetManualTasks(), dbGetTodos(), dbGetCategories()
+  ]);
+  return { logs:{}, domainCategories:{}, sessions:[], categories:cats, manualTasks, todoItems };
+}
+async function loadCategories() {
+  const cats = await dbGetCategories();
+  CATEGORIES = (cats && cats.length) ? cats : [...DEFAULT_CATEGORIES];
+  if (!cats || !cats.length) await dbSaveCategories(CATEGORIES);
+}
+async function saveCategories() { await dbSaveCategories(CATEGORIES); }
+async function getManualTasks() { return dbGetManualTasks(); }
+async function saveManualTask(task) { await dbSaveManualTask(task); }
+async function deleteManualTask(id) { await dbDeleteManualTask(id); }
+async function getTodoItems() { return dbGetTodos(); }
+async function saveTodoItems(items) { await dbSaveTodos(items); }
 
 // ─── Sloth Images ────────────────────────────────────────────
 const SLOTH_IMGS = {
@@ -1074,10 +1080,10 @@ const ACHIEVEMENTS_DEF = [
   { id:'habits_5',      icon:'🌟', label:'Habit Master',     desc:'Created 5 or more habits',             check:(h,l)=>h.length>=5 },
 ];
 
-async function getHabits() { const r = await store.get('habits'); return r.habits || []; }
-async function saveHabits(h) { await store.set({ habits: h }); }
-async function getHabitLogs() { const r = await store.get('habitLogs'); return r.habitLogs || {}; }
-async function saveHabitLogs(l) { await store.set({ habitLogs: l }); }
+async function getHabits() { return dbGetHabits(); }
+async function saveHabits(h) { await dbSaveHabits(h); }
+async function getHabitLogs() { return dbGetHabitLogs(); }
+async function saveHabitLogs(l) { /* logs saved individually via toggleHabitToday */ }
 
 function getHabitStreak(habitId, frequency, timesPerWeek, logs) {
   const today = getTodayKey();
@@ -1148,10 +1154,8 @@ function isHabitDoneToday(habitId, logs) { return !!(logs[habitId]?.[getTodayKey
 async function toggleHabitToday(habitId) {
   const logs = await getHabitLogs();
   const today = getTodayKey();
-  if (!logs[habitId]) logs[habitId] = {};
-  if (logs[habitId][today]) delete logs[habitId][today];
-  else logs[habitId][today] = true;
-  await saveHabitLogs(logs);
+  const isDone = !!(logs[habitId]?.[today]);
+  await dbToggleHabitLog(habitId, today, !isDone);
   renderHabits();
 }
 
@@ -1440,7 +1444,7 @@ document.getElementById('habitModalSave').addEventListener('click', async () => 
 
 document.getElementById('habitDeleteBtn').addEventListener('click', async () => {
   if (!editingHabitId || !confirm('Delete this habit and all its history?')) return;
-  await saveHabits((await getHabits()).filter(h=>h.id!==editingHabitId));
+  await dbDeleteHabit(editingHabitId);
   document.getElementById('habitModal').style.display = 'none';
   renderHabits();
 });
@@ -1478,8 +1482,60 @@ document.getElementById('habitCalClose').addEventListener('click', () => {
 });
 
 
-// ─── Boot ─────────────────────────────────────────────────────
-(async()=>{
+// ─── Auth UI ──────────────────────────────────────────────────
+let _authTab = 'login';
+
+function switchAuthTab(tab) {
+  _authTab = tab;
+  const loginBtn = document.getElementById('authTabLogin');
+  const signupBtn = document.getElementById('authTabSignup');
+  loginBtn.style.cssText = `flex:1;padding:8px;border-radius:9px;border:none;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;cursor:pointer;background:${tab==='login'?'#fff':'transparent'};color:${tab==='login'?'var(--forest)':'var(--grey)'};box-shadow:${tab==='login'?'var(--shadow)':'none'};`;
+  signupBtn.style.cssText = `flex:1;padding:8px;border-radius:9px;border:none;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;background:${tab==='signup'?'#fff':'transparent'};color:${tab==='signup'?'var(--forest)':'var(--grey)'};box-shadow:${tab==='signup'?'var(--shadow)':'none'};`;
+  document.getElementById('authSubmitBtn').textContent = tab==='login' ? 'Sign In' : 'Create Account';
+  document.getElementById('authSignupNote').style.display = tab==='signup' ? '' : 'none';
+  document.getElementById('authError').style.display = 'none';
+}
+
+async function handleAuthSubmit() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const btn = document.getElementById('authSubmitBtn');
+  const errEl = document.getElementById('authError');
+  errEl.style.display = 'none';
+  if (!email || !password) { errEl.textContent = 'Please enter your email and password.'; errEl.style.display = ''; return; }
+  btn.textContent = 'Please wait…'; btn.disabled = true;
+  try {
+    if (_authTab === 'login') {
+      await sbSignIn(email, password);
+    } else {
+      await sbSignUp(email, password);
+      await sbSignIn(email, password);
+    }
+    await bootApp();
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = '';
+    btn.textContent = _authTab==='login' ? 'Sign In' : 'Create Account';
+    btn.disabled = false;
+  }
+}
+
+async function handleSignOut() {
+  if (!confirm('Sign out of Time Sloth?')) return;
+  await sbSignOut();
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('userBar').style.display = 'none';
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authPassword').value = '';
+}
+
+async function bootApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  const user = sbUser();
+  if (user) {
+    document.getElementById('userBar').style.display = 'flex';
+    document.getElementById('userBarEmail').textContent = user.email;
+  }
   try {
     const wasCallback = await handleOAuthCallback();
     await loadCategories();
@@ -1487,23 +1543,45 @@ document.getElementById('habitCalClose').addEventListener('click', () => {
     await loadActiveTask();
     populateTodoCatSelect();
     setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 180);
-    renderHabits();
     setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 140);
     setSloth('focusSlothWrap', 'active', 200);
     showSection('overview');
     if (wasCallback) showSection('outlook');
     setInterval(async()=>{
       try {
+        await sbGetSession();
         await loadCategories();
         _cachedSettings = await getSettings();
-        const active=document.querySelector('.nav-item.active')?.getAttribute('data-section');
-        if(active)showSection(active);
+        const active = document.querySelector('.nav-item.active')?.getAttribute('data-section');
+        if(active) showSection(active);
       } catch(e){ console.warn('Refresh error:', e); }
     }, 60000);
     setInterval(syncFlaggedEmails, 5*60*1000);
   } catch(e) {
     console.error('Boot error:', e);
-    // Still try to show the page even if boot partially failed
     try { showSection('overview'); } catch(e2){}
+  }
+}
+
+// Enter key support on auth
+setTimeout(() => {
+  const pwdEl = document.getElementById('authPassword');
+  const emailEl = document.getElementById('authEmail');
+  if (pwdEl) pwdEl.addEventListener('keydown', e => { if(e.key==='Enter') handleAuthSubmit(); });
+  if (emailEl) emailEl.addEventListener('keydown', e => { if(e.key==='Enter') pwdEl?.focus(); });
+}, 100);
+
+// ─── Boot ─────────────────────────────────────────────────────
+(async()=>{
+  try {
+    const session = await sbGetSession();
+    if (session && sbUser()) {
+      await bootApp();
+    } else {
+      document.getElementById('authScreen').style.display = 'flex';
+    }
+  } catch(e) {
+    console.error('Boot error:', e);
+    document.getElementById('authScreen').style.display = 'flex';
   }
 })();

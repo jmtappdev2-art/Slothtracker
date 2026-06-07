@@ -108,11 +108,7 @@ function setSloth(wrapperId, state, size) {
   if (!el) return;
   const src = SLOTH_IMGS[state] || SLOTH_IMGS.idle;
   const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
-  // mix-blend-mode:multiply removes white backgrounds on dark surfaces
-  // On light backgrounds we use normal blending
-  const isDarkBg = ['heroSlothWrap','companionSlothWrap','focusSlothWrap'].includes(wrapperId);
-  const blend = isDarkBg ? 'mix-blend-mode:multiply;' : '';
-  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;max-width:100%;${blend}filter:drop-shadow(0 4px 12px rgba(0,0,0,0.15));" class="${animClass}" alt="Time Sloth">`;
+  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;max-width:100%;filter:drop-shadow(0 4px 16px rgba(0,0,0,0.2));" class="${animClass}" alt="Time Sloth">`;
 }
 
 // ─── Active Task & Focus Screen ──────────────────────────────
@@ -428,8 +424,8 @@ async function renderOverview() {
   document.getElementById('heroSub').textContent = heroSub;
   // Show business sloth when daily goal complete, else idle/active based on task
   if (!activeTask) {
-    setSloth('heroSlothWrap', goalPct >= 100 ? 'business' : 'idle', 180);
-    setSloth('companionSlothWrap', goalPct >= 100 ? 'business' : 'locked', 140);
+    setSloth('heroSlothWrap', goalPct >= 100 ? 'celebrate' : 'idle', 180);
+    setSloth('companionSlothWrap', goalPct >= 100 ? 'celebrate' : 'locked', 140);
   }
 
   // Streak sidebar
@@ -755,16 +751,24 @@ function renderTodoItem(item, container) {
 }
 
 document.getElementById('todoAddBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('todoAddBtn');
   const title = document.getElementById('todoTitleInput').value.trim();
   const catId = document.getElementById('todoCatSelect').value || 'uncategorised';
   const dueDate = document.getElementById('todoDateInput').value || null;
   if (!title) { document.getElementById('todoTitleInput').focus(); return; }
-  const items = await getTodoItems();
-  items.push({ id:uid(), title, catId, dueDate, completed:false, completedDate:null, sessions:[], createdAt:Date.now(), source:'manual' });
-  await saveTodoItems(items);
-  document.getElementById('todoTitleInput').value = '';
-  document.getElementById('todoDateInput').value = '';
-  renderTodo();
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const newItem = { id:uid(), title, catId, dueDate, completed:false, completedDate:null, sessions:[], createdAt:Date.now(), source:'manual' };
+    await dbSaveTodos([newItem]);
+    document.getElementById('todoTitleInput').value = '';
+    document.getElementById('todoDateInput').value = '';
+    await renderTodo();
+  } catch(e) {
+    console.error('Add task error:', e);
+    alert('Could not save task: ' + e.message);
+  } finally {
+    btn.textContent = '+ Add'; btn.disabled = false;
+  }
 });
 document.getElementById('todoTitleInput').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('todoAddBtn').click(); });
 

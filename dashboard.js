@@ -2,18 +2,7 @@
 // Time Sloth Web — dashboard.js
 // ============================================================
 
-// ─── localStorage shim ───────────────────────────────────────
-const store = {
-  async get(keys) {
-    const result = {};
-    const kl = Array.isArray(keys) ? keys : [keys];
-    for (const k of kl) { try { const r = localStorage.getItem('st_'+k); result[k] = r !== null ? JSON.parse(r) : undefined; } catch { result[k] = undefined; } }
-    return result;
-  },
-  async set(obj) { for (const [k,v] of Object.entries(obj)) { try { localStorage.setItem('st_'+k, JSON.stringify(v)); } catch {} } },
-  async remove(keys) { const kl = Array.isArray(keys) ? keys : [keys]; for (const k of kl) localStorage.removeItem('st_'+k); },
-  async clear() { const r=[]; for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('st_'))r.push(k);} r.forEach(k=>localStorage.removeItem(k)); }
-};
+
 
 // ─── Constants ───────────────────────────────────────────────
 const DEFAULT_CATEGORIES = [
@@ -133,12 +122,11 @@ let focusScreenOpen = false;
 let focusSessionCount = 0;
 
 async function loadActiveTask() {
-  const r = await store.get('activeTask');
-  activeTask = r.activeTask || null;
+  try { const raw = localStorage.getItem('ts_activeTask'); activeTask = raw ? JSON.parse(raw) : null; } catch { activeTask = null; }
   updateBanner();
   if (activeTask) startTimerTick();
 }
-async function saveActiveTask() { await store.set({activeTask}); }
+function saveActiveTask() { try { localStorage.setItem('ts_activeTask', JSON.stringify(activeTask)); } catch {} }
 
 function updateBanner() {
   const allIdle = !activeTask;
@@ -179,7 +167,7 @@ async function startTask(todoId) {
   const item = items.find(i => i.id === todoId);
   if (!item) return;
   activeTask = { id: todoId, title: item.title, catId: item.catId, startTime: Date.now() };
-  await saveActiveTask();
+  saveActiveTask();
   updateBanner();
   startTimerTick();
   renderTodo();
@@ -228,7 +216,7 @@ async function stopTask(action='done') {
 
   const wasTask = { ...activeTask };
   activeTask = null;
-  await store.remove('activeTask');
+  localStorage.removeItem('ts_activeTask');
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   closeFocusScreen();
 
@@ -905,8 +893,8 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async () =>
 function renderExport(){
   document.getElementById('jsonExportBtn').onclick=async()=>{const d=await getData();const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`time-sloth-${getTodayKey()}.json`;a.click();URL.revokeObjectURL(u);};
   document.getElementById('csvExportBtn').onclick=async()=>{const{manualTasks}=await getData();const rows=[['Task','Category','Duration (sec)','Time','Date']];for(const t of(manualTasks||[]).sort((a,b)=>b.date.localeCompare(a.date)))rows.push([t.title,getCat(t.catId).label,t.duration,fmtSecs(t.duration),t.date]);const b=new Blob([rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`time-sloth-${getTodayKey()}.csv`;a.click();URL.revokeObjectURL(u);};
-  document.getElementById('importJsonBtn').onclick=()=>{const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=async e=>{const file=e.target.files[0];if(!file)return;const text=await file.text();try{const data=JSON.parse(text);if(data.manualTasks)await store.set({manualTasks:data.manualTasks});if(data.categories)await store.set({categories:data.categories});if(data.logs)await store.set({logs:data.logs});if(data.sessions)await store.set({sessions:data.sessions});if(data.domainCategories)await store.set({domainCategories:data.domainCategories});await loadCategories();alert('Data imported!');showSection('overview');}catch{alert('Import failed.');}};input.click();};
-  document.getElementById('clearDataBtn').onclick=async()=>{if(confirm('Delete ALL data?')){await store.clear();await loadCategories();alert('Cleared.');renderExport();}};
+  document.getElementById('importJsonBtn').onclick=()=>{const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=async e=>{const file=e.target.files[0];if(!file)return;const text=await file.text();try{const data=JSON.parse(text);if(data.manualTasks){await dbSaveTodos(data.manualTasks || []);}if(data.categories){await dbSaveCategories(data.categories || []);}await loadCategories();alert('Data imported!');showSection('overview');}catch{alert('Import failed.');}};input.click();};
+  document.getElementById('clearDataBtn').onclick=async()=>{if(confirm('Delete ALL data?')){try{await sbFetch('todos?user_id=eq.'+sbUser()?.id,'DELETE');await sbFetch('manual_tasks?user_id=eq.'+sbUser()?.id,'DELETE');await sbFetch('habits?user_id=eq.'+sbUser()?.id,'DELETE');await sbFetch('habit_logs?user_id=eq.'+sbUser()?.id,'DELETE');}catch(e){console.warn(e);}await loadCategories();alert('Cleared.');renderExport();}};
   const keys=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('st_'))keys.push(k);}let bytes=0;keys.forEach(k=>{bytes+=((localStorage.getItem(k)||'').length*2);});const el=document.getElementById('storageUsage');if(el)el.textContent=`${(bytes/1024).toFixed(1)} KB used`;
 }
 
@@ -938,9 +926,9 @@ function getRedirectUri(){return window.location.origin+window.location.pathname
 let outlookRange='today';
 function b64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf instanceof ArrayBuffer?buf:buf.buffer||buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');}
 async function makePkce(){const arr=crypto.getRandomValues(new Uint8Array(32));const verifier=b64url(arr);const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier));return{verifier,challenge:b64url(new Uint8Array(digest))};}
-async function saveOutlookTokens(t){t.stored_at=Date.now();await store.set({outlookTokens:t});}
-async function getOutlookTokens(){const r=await store.get('outlookTokens');return r.outlookTokens||null;}
-async function clearOutlookTokens(){await store.remove(['outlookTokens','outlookProfile']);}
+async function saveOutlookTokens(t){t.stored_at=Date.now();localStorage.setItem('ts_outlookTokens',JSON.stringify(t));}
+async function getOutlookTokens(){try{const r=localStorage.getItem('ts_outlookTokens');return r?JSON.parse(r):null;}catch{return null;}}
+async function clearOutlookTokens(){localStorage.removeItem('ts_outlookTokens');localStorage.removeItem('ts_outlookProfile');}
 async function isOutlookSignedIn(){return!!(await getOutlookTokens());}
 async function getAccessToken(){
   const t=await getOutlookTokens();if(!t)throw new Error('Not signed in');
@@ -996,8 +984,8 @@ async function renderOutlook(){
   if(!signedIn){body.innerHTML=`<div class="outlook-connect-box"><div class="outlook-connect-icon">📧</div><div class="outlook-connect-title">Connect your Outlook</div><div class="outlook-connect-desc">Sign in to pull in email stats and sync flagged emails to your To-Do list automatically.</div><div class="outlook-note">⚠️ Add <code>${getRedirectUri()}</code> as a redirect URI in your Azure app registration first.</div><button class="btn btn-primary" id="outlookSignInBtn" style="width:100%;margin-top:12px">Sign in with Microsoft</button></div>`;document.getElementById('outlookSignInBtn').addEventListener('click',()=>outlookSignIn());return;}
   body.innerHTML=`<div class="outlook-loading"><div class="outlook-loading-spinner"></div>Loading…</div>`;
   try{
-    let profile=(await store.get('outlookProfile')).outlookProfile;
-    if(!profile){profile=await graph('/me',{$select:'displayName,mail,userPrincipalName'});await store.set({outlookProfile:profile});}
+    let profile=null;try{const rp=localStorage.getItem('ts_outlookProfile');profile=rp?JSON.parse(rp):null;}catch{}
+    if(!profile){profile=await graph('/me',{$select:'displayName,mail,userPrincipalName'});localStorage.setItem('ts_outlookProfile',JSON.stringify(profile));}
     const displayName=profile.displayName||'You',email=profile.mail||profile.userPrincipalName||'';
     const initials=displayName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const stats=await fetchEmailStats(outlookRange);

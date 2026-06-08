@@ -2,18 +2,7 @@
 // Time Sloth Web — dashboard.js
 // ============================================================
 
-// ─── localStorage shim ───────────────────────────────────────
-const store = {
-  async get(keys) {
-    const result = {};
-    const kl = Array.isArray(keys) ? keys : [keys];
-    for (const k of kl) { try { const r = localStorage.getItem('st_'+k); result[k] = r !== null ? JSON.parse(r) : undefined; } catch { result[k] = undefined; } }
-    return result;
-  },
-  async set(obj) { for (const [k,v] of Object.entries(obj)) { try { localStorage.setItem('st_'+k, JSON.stringify(v)); } catch {} } },
-  async remove(keys) { const kl = Array.isArray(keys) ? keys : [keys]; for (const k of kl) localStorage.removeItem('st_'+k); },
-  async clear() { const r=[]; for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('st_'))r.push(k);} r.forEach(k=>localStorage.removeItem(k)); }
-};
+
 
 // ─── Constants ───────────────────────────────────────────────
 const DEFAULT_CATEGORIES = [
@@ -67,7 +56,12 @@ function calcStreak(manualTasks) {
 function fmtSecs(s) { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; if(h>0)return`${h}h ${m}m`; if(m>0)return`${m}m ${ss}s`; return`${ss}s`; }
 function fmtMins(m) { if(m>=60){const h=Math.floor(m/60),rm=m%60;return rm>0?`${h}h ${rm}m`:`${h}h`;} return`${m}m`; }
 function fmtTimer(s) { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; if(h>0)return`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`; return`${m}:${String(ss).padStart(2,'0')}`; }
-function uid() { return 'id_'+Math.random().toString(36).slice(2,9); }
+function uid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0;
+    return (c==='x' ? r : (r&0x3|0x8)).toString(16);
+  });
+}
 function localKey(d) { return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function getTodayKey() { return localKey(new Date()); }
 function getDateRange(range) {
@@ -81,21 +75,27 @@ function getCat(id) { return CATEGORIES.find(c=>c.id===id)||CATEGORIES[0]; }
 function aggregateLogs(logs,dateKeys) { const t={};for(const k of dateKeys)for(const[d,s]of Object.entries(logs[k]||{}))t[d]=(t[d]||0)+s; return t; }
 
 // ─── Settings ────────────────────────────────────────────────
-async function getSettings() {
-  const r = await store.get('settings');
-  return r.settings || { name: '', dailyGoalMins: 120, sessionLengthMins: 25 };
-}
-async function saveSettings(s) { await store.set({ settings: s }); }
+async function getSettings() { return dbGetSettings(); }
+async function saveSettings(s) { await dbSaveSettings(s); }
 
 // ─── Storage helpers ─────────────────────────────────────────
-async function getData() { return store.get(['logs','domainCategories','sessions','categories','manualTasks','todoItems']); }
-async function loadCategories() { const r=await store.get('categories');CATEGORIES=(r.categories&&r.categories.length)?r.categories:[...DEFAULT_CATEGORIES];if(!r.categories)await store.set({categories:CATEGORIES}); }
-async function saveCategories() { await store.set({categories:CATEGORIES}); }
-async function getManualTasks() { const r=await store.get('manualTasks');return r.manualTasks||[]; }
-async function saveManualTask(task) { const t=await getManualTasks();t.push(task);await store.set({manualTasks:t}); }
-async function deleteManualTask(id) { const t=await getManualTasks();await store.set({manualTasks:t.filter(x=>x.id!==id)}); }
-async function getTodoItems() { const r=await store.get('todoItems');return r.todoItems||[]; }
-async function saveTodoItems(items) { await store.set({todoItems:items}); }
+async function getData() {
+  const [manualTasks, todoItems, cats] = await Promise.all([
+    dbGetManualTasks(), dbGetTodos(), dbGetCategories()
+  ]);
+  return { logs:{}, domainCategories:{}, sessions:[], categories:cats, manualTasks, todoItems };
+}
+async function loadCategories() {
+  const cats = await dbGetCategories();
+  CATEGORIES = (cats && cats.length) ? cats : [...DEFAULT_CATEGORIES];
+  if (!cats || !cats.length) await dbSaveCategories(CATEGORIES);
+}
+async function saveCategories() { await dbSaveCategories(CATEGORIES); }
+async function getManualTasks() { return dbGetManualTasks(); }
+async function saveManualTask(task) { await dbSaveManualTask(task); }
+async function deleteManualTask(id) { await dbDeleteManualTask(id); }
+async function getTodoItems() { return dbGetTodos(); }
+async function saveTodoItems(items) { await dbSaveTodos(items); }
 
 // ─── Sloth Images ────────────────────────────────────────────
 const SLOTH_IMGS = {
@@ -113,11 +113,7 @@ function setSloth(wrapperId, state, size) {
   if (!el) return;
   const src = SLOTH_IMGS[state] || SLOTH_IMGS.idle;
   const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
-  // mix-blend-mode:multiply removes white backgrounds on dark surfaces
-  // On light backgrounds we use normal blending
-  const isDarkBg = ['heroSlothWrap','companionSlothWrap','focusSlothWrap'].includes(wrapperId);
-  const blend = isDarkBg ? 'mix-blend-mode:multiply;' : '';
-  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;max-width:100%;${blend}filter:drop-shadow(0 4px 12px rgba(0,0,0,0.15));" class="${animClass}" alt="Time Sloth">`;
+  el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;max-width:100%;filter:drop-shadow(0 4px 16px rgba(0,0,0,0.2));" class="${animClass}" alt="Time Sloth">`;
 }
 
 // ─── Active Task & Focus Screen ──────────────────────────────
@@ -127,12 +123,11 @@ let focusScreenOpen = false;
 let focusSessionCount = 0;
 
 async function loadActiveTask() {
-  const r = await store.get('activeTask');
-  activeTask = r.activeTask || null;
+  try { const raw = localStorage.getItem('ts_activeTask'); activeTask = raw ? JSON.parse(raw) : null; } catch { activeTask = null; }
   updateBanner();
   if (activeTask) startTimerTick();
 }
-async function saveActiveTask() { await store.set({activeTask}); }
+function saveActiveTask() { try { localStorage.setItem('ts_activeTask', JSON.stringify(activeTask)); } catch {} }
 
 function updateBanner() {
   const allIdle = !activeTask;
@@ -173,7 +168,7 @@ async function startTask(todoId) {
   const item = items.find(i => i.id === todoId);
   if (!item) return;
   activeTask = { id: todoId, title: item.title, catId: item.catId, startTime: Date.now() };
-  await saveActiveTask();
+  saveActiveTask();
   updateBanner();
   startTimerTick();
   renderTodo();
@@ -222,7 +217,7 @@ async function stopTask(action='done') {
 
   const wasTask = { ...activeTask };
   activeTask = null;
-  await store.remove('activeTask');
+  localStorage.removeItem('ts_activeTask');
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   closeFocusScreen();
 
@@ -434,8 +429,8 @@ async function renderOverview() {
   document.getElementById('heroSub').textContent = heroSub;
   // Show business sloth when daily goal complete, else idle/active based on task
   if (!activeTask) {
-    setSloth('heroSlothWrap', goalPct >= 100 ? 'business' : 'idle', 180);
-    setSloth('companionSlothWrap', goalPct >= 100 ? 'business' : 'locked', 140);
+    setSloth('heroSlothWrap', goalPct >= 100 ? 'celebrate' : 'idle', 180);
+    setSloth('companionSlothWrap', goalPct >= 100 ? 'celebrate' : 'locked', 140);
   }
 
   // Streak sidebar
@@ -761,16 +756,24 @@ function renderTodoItem(item, container) {
 }
 
 document.getElementById('todoAddBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('todoAddBtn');
   const title = document.getElementById('todoTitleInput').value.trim();
   const catId = document.getElementById('todoCatSelect').value || 'uncategorised';
   const dueDate = document.getElementById('todoDateInput').value || null;
   if (!title) { document.getElementById('todoTitleInput').focus(); return; }
-  const items = await getTodoItems();
-  items.push({ id:uid(), title, catId, dueDate, completed:false, completedDate:null, sessions:[], createdAt:Date.now(), source:'manual' });
-  await saveTodoItems(items);
-  document.getElementById('todoTitleInput').value = '';
-  document.getElementById('todoDateInput').value = '';
-  renderTodo();
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const newItem = { id:uid(), title, catId, dueDate, completed:false, completedDate:null, sessions:[], createdAt:Date.now(), source:'manual' };
+    await dbSaveTodos([newItem]);
+    document.getElementById('todoTitleInput').value = '';
+    document.getElementById('todoDateInput').value = '';
+    await renderTodo();
+  } catch(e) {
+    console.error('Add task error:', e);
+    alert('Could not save task: ' + e.message);
+  } finally {
+    btn.textContent = '+ Add'; btn.disabled = false;
+  }
 });
 document.getElementById('todoTitleInput').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('todoAddBtn').click(); });
 
@@ -899,8 +902,8 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async () =>
 function renderExport(){
   document.getElementById('jsonExportBtn').onclick=async()=>{const d=await getData();const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`time-sloth-${getTodayKey()}.json`;a.click();URL.revokeObjectURL(u);};
   document.getElementById('csvExportBtn').onclick=async()=>{const{manualTasks}=await getData();const rows=[['Task','Category','Duration (sec)','Time','Date']];for(const t of(manualTasks||[]).sort((a,b)=>b.date.localeCompare(a.date)))rows.push([t.title,getCat(t.catId).label,t.duration,fmtSecs(t.duration),t.date]);const b=new Blob([rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`time-sloth-${getTodayKey()}.csv`;a.click();URL.revokeObjectURL(u);};
-  document.getElementById('importJsonBtn').onclick=()=>{const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=async e=>{const file=e.target.files[0];if(!file)return;const text=await file.text();try{const data=JSON.parse(text);if(data.manualTasks)await store.set({manualTasks:data.manualTasks});if(data.categories)await store.set({categories:data.categories});if(data.logs)await store.set({logs:data.logs});if(data.sessions)await store.set({sessions:data.sessions});if(data.domainCategories)await store.set({domainCategories:data.domainCategories});await loadCategories();alert('Data imported!');showSection('overview');}catch{alert('Import failed.');}};input.click();};
-  document.getElementById('clearDataBtn').onclick=async()=>{if(confirm('Delete ALL data?')){await store.clear();await loadCategories();alert('Cleared.');renderExport();}};
+  document.getElementById('importJsonBtn').onclick=()=>{const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=async e=>{const file=e.target.files[0];if(!file)return;const text=await file.text();try{const data=JSON.parse(text);if(data.manualTasks){await dbSaveTodos(data.manualTasks || []);}if(data.categories){await dbSaveCategories(data.categories || []);}await loadCategories();alert('Data imported!');showSection('overview');}catch{alert('Import failed.');}};input.click();};
+  document.getElementById('clearDataBtn').onclick=async()=>{if(confirm('Delete ALL data?')){try{await sbFetch('todos?user_id=eq.'+sbUser()?.id,'DELETE');await sbFetch('manual_tasks?user_id=eq.'+sbUser()?.id,'DELETE');await sbFetch('habits?user_id=eq.'+sbUser()?.id,'DELETE');await sbFetch('habit_logs?user_id=eq.'+sbUser()?.id,'DELETE');}catch(e){console.warn(e);}await loadCategories();alert('Cleared.');renderExport();}};
   const keys=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('st_'))keys.push(k);}let bytes=0;keys.forEach(k=>{bytes+=((localStorage.getItem(k)||'').length*2);});const el=document.getElementById('storageUsage');if(el)el.textContent=`${(bytes/1024).toFixed(1)} KB used`;
 }
 
@@ -932,9 +935,9 @@ function getRedirectUri(){return window.location.origin+window.location.pathname
 let outlookRange='today';
 function b64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf instanceof ArrayBuffer?buf:buf.buffer||buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');}
 async function makePkce(){const arr=crypto.getRandomValues(new Uint8Array(32));const verifier=b64url(arr);const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier));return{verifier,challenge:b64url(new Uint8Array(digest))};}
-async function saveOutlookTokens(t){t.stored_at=Date.now();await store.set({outlookTokens:t});}
-async function getOutlookTokens(){const r=await store.get('outlookTokens');return r.outlookTokens||null;}
-async function clearOutlookTokens(){await store.remove(['outlookTokens','outlookProfile']);}
+async function saveOutlookTokens(t){t.stored_at=Date.now();localStorage.setItem('ts_outlookTokens',JSON.stringify(t));}
+async function getOutlookTokens(){try{const r=localStorage.getItem('ts_outlookTokens');return r?JSON.parse(r):null;}catch{return null;}}
+async function clearOutlookTokens(){localStorage.removeItem('ts_outlookTokens');localStorage.removeItem('ts_outlookProfile');}
 async function isOutlookSignedIn(){return!!(await getOutlookTokens());}
 async function getAccessToken(){
   const t=await getOutlookTokens();if(!t)throw new Error('Not signed in');
@@ -990,8 +993,8 @@ async function renderOutlook(){
   if(!signedIn){body.innerHTML=`<div class="outlook-connect-box"><div class="outlook-connect-icon">📧</div><div class="outlook-connect-title">Connect your Outlook</div><div class="outlook-connect-desc">Sign in to pull in email stats and sync flagged emails to your To-Do list automatically.</div><div class="outlook-note">⚠️ Add <code>${getRedirectUri()}</code> as a redirect URI in your Azure app registration first.</div><button class="btn btn-primary" id="outlookSignInBtn" style="width:100%;margin-top:12px">Sign in with Microsoft</button></div>`;document.getElementById('outlookSignInBtn').addEventListener('click',()=>outlookSignIn());return;}
   body.innerHTML=`<div class="outlook-loading"><div class="outlook-loading-spinner"></div>Loading…</div>`;
   try{
-    let profile=(await store.get('outlookProfile')).outlookProfile;
-    if(!profile){profile=await graph('/me',{$select:'displayName,mail,userPrincipalName'});await store.set({outlookProfile:profile});}
+    let profile=null;try{const rp=localStorage.getItem('ts_outlookProfile');profile=rp?JSON.parse(rp):null;}catch{}
+    if(!profile){profile=await graph('/me',{$select:'displayName,mail,userPrincipalName'});localStorage.setItem('ts_outlookProfile',JSON.stringify(profile));}
     const displayName=profile.displayName||'You',email=profile.mail||profile.userPrincipalName||'';
     const initials=displayName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const stats=await fetchEmailStats(outlookRange);
@@ -1074,10 +1077,10 @@ const ACHIEVEMENTS_DEF = [
   { id:'habits_5',      icon:'🌟', label:'Habit Master',     desc:'Created 5 or more habits',             check:(h,l)=>h.length>=5 },
 ];
 
-async function getHabits() { const r = await store.get('habits'); return r.habits || []; }
-async function saveHabits(h) { await store.set({ habits: h }); }
-async function getHabitLogs() { const r = await store.get('habitLogs'); return r.habitLogs || {}; }
-async function saveHabitLogs(l) { await store.set({ habitLogs: l }); }
+async function getHabits() { return dbGetHabits(); }
+async function saveHabits(h) { await dbSaveHabits(h); }
+async function getHabitLogs() { return dbGetHabitLogs(); }
+async function saveHabitLogs(l) { /* logs saved individually via toggleHabitToday */ }
 
 function getHabitStreak(habitId, frequency, timesPerWeek, logs) {
   const today = getTodayKey();
@@ -1148,10 +1151,8 @@ function isHabitDoneToday(habitId, logs) { return !!(logs[habitId]?.[getTodayKey
 async function toggleHabitToday(habitId) {
   const logs = await getHabitLogs();
   const today = getTodayKey();
-  if (!logs[habitId]) logs[habitId] = {};
-  if (logs[habitId][today]) delete logs[habitId][today];
-  else logs[habitId][today] = true;
-  await saveHabitLogs(logs);
+  const isDone = !!(logs[habitId]?.[today]);
+  await dbToggleHabitLog(habitId, today, !isDone);
   renderHabits();
 }
 
@@ -1241,11 +1242,14 @@ async function renderHabits() {
     </div>
   `;
 
-  // Wire add button
-  document.getElementById('addHabitBtn').addEventListener('click', () => {
-    document.getElementById('habitDeleteBtn').style.display = 'none';
-    openHabitModal();
-  });
+  // Wire add button - use setTimeout since button is in dynamic HTML
+  setTimeout(() => {
+    const btn = document.getElementById('addHabitBtn');
+    if (btn) btn.addEventListener('click', () => {
+      document.getElementById('habitDeleteBtn').style.display = 'none';
+      openHabitModal();
+    });
+  }, 50);
 
   // Render habit groups
   renderHabitGroups(habits, logs);
@@ -1440,7 +1444,7 @@ document.getElementById('habitModalSave').addEventListener('click', async () => 
 
 document.getElementById('habitDeleteBtn').addEventListener('click', async () => {
   if (!editingHabitId || !confirm('Delete this habit and all its history?')) return;
-  await saveHabits((await getHabits()).filter(h=>h.id!==editingHabitId));
+  await dbDeleteHabit(editingHabitId);
   document.getElementById('habitModal').style.display = 'none';
   renderHabits();
 });
@@ -1478,8 +1482,60 @@ document.getElementById('habitCalClose').addEventListener('click', () => {
 });
 
 
-// ─── Boot ─────────────────────────────────────────────────────
-(async()=>{
+// ─── Auth UI ──────────────────────────────────────────────────
+let _authTab = 'login';
+
+function switchAuthTab(tab) {
+  _authTab = tab;
+  const loginBtn = document.getElementById('authTabLogin');
+  const signupBtn = document.getElementById('authTabSignup');
+  loginBtn.style.cssText = `flex:1;padding:8px;border-radius:9px;border:none;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;cursor:pointer;background:${tab==='login'?'#fff':'transparent'};color:${tab==='login'?'var(--forest)':'var(--grey)'};box-shadow:${tab==='login'?'var(--shadow)':'none'};`;
+  signupBtn.style.cssText = `flex:1;padding:8px;border-radius:9px;border:none;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;background:${tab==='signup'?'#fff':'transparent'};color:${tab==='signup'?'var(--forest)':'var(--grey)'};box-shadow:${tab==='signup'?'var(--shadow)':'none'};`;
+  document.getElementById('authSubmitBtn').textContent = tab==='login' ? 'Sign In' : 'Create Account';
+  document.getElementById('authSignupNote').style.display = tab==='signup' ? '' : 'none';
+  document.getElementById('authError').style.display = 'none';
+}
+
+async function handleAuthSubmit() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const btn = document.getElementById('authSubmitBtn');
+  const errEl = document.getElementById('authError');
+  errEl.style.display = 'none';
+  if (!email || !password) { errEl.textContent = 'Please enter your email and password.'; errEl.style.display = ''; return; }
+  btn.textContent = 'Please wait…'; btn.disabled = true;
+  try {
+    if (_authTab === 'login') {
+      await sbSignIn(email, password);
+    } else {
+      await sbSignUp(email, password);
+      await sbSignIn(email, password);
+    }
+    await bootApp();
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = '';
+    btn.textContent = _authTab==='login' ? 'Sign In' : 'Create Account';
+    btn.disabled = false;
+  }
+}
+
+async function handleSignOut() {
+  if (!confirm('Sign out of Time Sloth?')) return;
+  await sbSignOut();
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('userBar').style.display = 'none';
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authPassword').value = '';
+}
+
+async function bootApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  const user = sbUser();
+  if (user) {
+    document.getElementById('userBar').style.display = 'flex';
+    document.getElementById('userBarEmail').textContent = user.email;
+  }
   try {
     const wasCallback = await handleOAuthCallback();
     await loadCategories();
@@ -1487,23 +1543,45 @@ document.getElementById('habitCalClose').addEventListener('click', () => {
     await loadActiveTask();
     populateTodoCatSelect();
     setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 180);
-    renderHabits();
     setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 140);
     setSloth('focusSlothWrap', 'active', 200);
     showSection('overview');
     if (wasCallback) showSection('outlook');
     setInterval(async()=>{
       try {
+        await sbGetSession();
         await loadCategories();
         _cachedSettings = await getSettings();
-        const active=document.querySelector('.nav-item.active')?.getAttribute('data-section');
-        if(active)showSection(active);
+        const active = document.querySelector('.nav-item.active')?.getAttribute('data-section');
+        if(active) showSection(active);
       } catch(e){ console.warn('Refresh error:', e); }
     }, 60000);
     setInterval(syncFlaggedEmails, 5*60*1000);
   } catch(e) {
     console.error('Boot error:', e);
-    // Still try to show the page even if boot partially failed
     try { showSection('overview'); } catch(e2){}
+  }
+}
+
+// Enter key support on auth
+setTimeout(() => {
+  const pwdEl = document.getElementById('authPassword');
+  const emailEl = document.getElementById('authEmail');
+  if (pwdEl) pwdEl.addEventListener('keydown', e => { if(e.key==='Enter') handleAuthSubmit(); });
+  if (emailEl) emailEl.addEventListener('keydown', e => { if(e.key==='Enter') pwdEl?.focus(); });
+}, 100);
+
+// ─── Boot ─────────────────────────────────────────────────────
+(async()=>{
+  try {
+    const session = await sbGetSession();
+    if (session && sbUser()) {
+      await bootApp();
+    } else {
+      document.getElementById('authScreen').style.display = 'flex';
+    }
+  } catch(e) {
+    console.error('Boot error:', e);
+    document.getElementById('authScreen').style.display = 'flex';
   }
 })();

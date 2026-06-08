@@ -728,7 +728,28 @@ function renderTodoItem(item, container) {
     if (!items[idx].completed) {
       items[idx].completed = true;
       items[idx].completedDate = getTodayKey();
-      if (isRunning) await stopTask('done');
+      if (isRunning) {
+        await stopTask('done');
+      } else {
+        // Log total session time to timeline if task has sessions
+        const sessions = items[idx].sessions || [];
+        const totalDuration = sessions.reduce((s,sess)=>s+(sess.duration||0),0);
+        if (totalDuration > 0) {
+          const now = new Date();
+          const startTimeStr = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+          await dbSaveManualTask({
+            id: uid(),
+            title: items[idx].title,
+            catId: items[idx].catId,
+            date: getTodayKey(),
+            startTime: startTimeStr,
+            endTime: startTimeStr,
+            duration: totalDuration,
+            notes: 'Completed task',
+            createdAt: Date.now()
+          });
+        }
+      }
     } else {
       items[idx].completed = false;
       items[idx].completedDate = null;
@@ -1428,25 +1449,36 @@ document.getElementById('habitModalCancel').addEventListener('click', () => { do
 document.getElementById('habitModalSave').addEventListener('click', async () => {
   const name = document.getElementById('habitNameInput').value.trim();
   if (!name) { document.getElementById('habitNameInput').focus(); return; }
-  const frequency = document.querySelector('input[name="habitFreq"]:checked').value;
-  const groupId = document.getElementById('habitGroupSelect')?.value || 'other';
-  const habits = await getHabits();
-  if (editingHabitId) {
-    const idx = habits.findIndex(h=>h.id===editingHabitId);
-    if (idx!==-1) habits[idx] = { ...habits[idx], name, emoji:selectedHabitEmoji, colour:selectedHabitColour, frequency, timesPerWeek:weeklyCountVal, groupId };
-  } else {
-    habits.push({ id:uid(), name, emoji:selectedHabitEmoji, colour:selectedHabitColour, frequency, timesPerWeek:weeklyCountVal, groupId, createdAt:Date.now() });
+  const saveBtn = document.getElementById('habitModalSave');
+  saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
+  try {
+    const frequency = document.querySelector('input[name="habitFreq"]:checked').value;
+    const groupId = document.getElementById('habitGroupSelect')?.value || 'other';
+    if (editingHabitId) {
+      // Update existing
+      await dbSaveHabits([{ id:editingHabitId, name, emoji:selectedHabitEmoji, colour:selectedHabitColour, frequency, timesPerWeek:weeklyCountVal, groupId, createdAt:Date.now() }]);
+    } else {
+      // Create new
+      await dbSaveHabits([{ id:uid(), name, emoji:selectedHabitEmoji, colour:selectedHabitColour, frequency, timesPerWeek:weeklyCountVal, groupId, createdAt:Date.now() }]);
+    }
+    document.getElementById('habitModal').style.display = 'none';
+    renderHabits();
+  } catch(e) {
+    alert('Could not save habit: ' + e.message);
+  } finally {
+    saveBtn.textContent = 'Save'; saveBtn.disabled = false;
   }
-  await saveHabits(habits);
-  document.getElementById('habitModal').style.display = 'none';
-  renderHabits();
 });
 
 document.getElementById('habitDeleteBtn').addEventListener('click', async () => {
   if (!editingHabitId || !confirm('Delete this habit and all its history?')) return;
-  await dbDeleteHabit(editingHabitId);
-  document.getElementById('habitModal').style.display = 'none';
-  renderHabits();
+  try {
+    await dbDeleteHabit(editingHabitId);
+    document.getElementById('habitModal').style.display = 'none';
+    renderHabits();
+  } catch(e) {
+    alert('Could not delete habit: ' + e.message);
+  }
 });
 
 async function renderHabitCalendar(habitId) {

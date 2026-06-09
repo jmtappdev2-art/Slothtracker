@@ -112,7 +112,7 @@ function setSloth(wrapperId, state, size) {
   const el = document.getElementById(wrapperId);
   if (!el) return;
   const src = SLOTH_IMGS[state] || SLOTH_IMGS.idle;
-  const animClass = state==='idle'?'sloth-idle':state==='active'?'sloth-active':'sloth-celebrate';
+  const animClass = state==='celebrate'?'sloth-celebrate':'';
   el.innerHTML = `<img src="${src}" style="height:${size}px;width:auto;display:block;object-fit:contain;max-width:100%;filter:drop-shadow(0 4px 16px rgba(0,0,0,0.2));" class="${animClass}" alt="Time Sloth">`;
 }
 
@@ -185,22 +185,17 @@ async function stopTask(action='done') {
     const now = new Date(activeTask.startTime);
     const endNow = new Date();
     const startTimeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const endTimeStr = `${String(endNow.getHours()).padStart(2,'0')}:${String(endNow.getMinutes()).padStart(2,'0')}`;
     const sessionNote = action === 'pause' ? 'paused session' : 'focus session';
 
-    // Log to timeline/calendar as a manual task session
+    // Log to timeline/calendar
     await saveManualTask({
-      id: uid(),
-      title: activeTask.title,
-      catId: activeTask.catId,
-      date: localKey(now),
-      startTime: startTimeStr,
-      endTime: `${String(endNow.getHours()).padStart(2,'0')}:${String(endNow.getMinutes()).padStart(2,'0')}`,
-      duration,
-      notes: sessionNote,
-      createdAt: Date.now()
+      id: uid(), title: activeTask.title, catId: activeTask.catId,
+      date: localKey(now), startTime: startTimeStr, endTime: endTimeStr,
+      duration, notes: sessionNote, createdAt: Date.now()
     });
 
-    // Record session on the todo item itself
+    // Update todo item
     const todoItems = await getTodoItems();
     const idx = todoItems.findIndex(i=>i.id===activeTask.id);
     if (idx !== -1) {
@@ -222,14 +217,14 @@ async function stopTask(action='done') {
   closeFocusScreen();
 
   if (action === 'done') {
-    setSloth('heroSlothWrap', 'celebrate', 180);
+    setSloth('heroSlothWrap', 'celebrate', 120);
     setSloth('companionSlothWrap', 'celebrate', 140);
     setTimeout(() => {
-      setSloth('heroSlothWrap', 'idle', 180);
+      setSloth('heroSlothWrap', 'idle', 120);
       setSloth('companionSlothWrap', 'idle', 140);
     }, 3000);
   } else {
-    setSloth('heroSlothWrap', 'idle', 180);
+    setSloth('heroSlothWrap', 'idle', 120);
     setSloth('companionSlothWrap', 'idle', 140);
   }
 
@@ -240,19 +235,44 @@ async function stopTask(action='done') {
 }
 
 // ─── Focus Screen ─────────────────────────────────────────────
+const FOCUS_IMAGES = [
+  { key:'active',   label:'Hyperspeed',  src:'Hyperspeed sloth.png' },
+  { key:'locked',   label:'Locked In',   src:'Locked in sloth .png' },
+  { key:'running',  label:'Running',     src:'Running sloth .png' },
+  { key:'business', label:'Business',    src:'Business Sloth .png' },
+  { key:'idle',     label:'Multitasking',src:'Multitaks Sloth .png' },
+];
+let selectedFocusImage = 'active';
+
 function openFocusScreen(taskName, catId) {
   focusScreenOpen = true;
   const cat = getCat(catId);
   const screen = document.getElementById('focusScreen');
   screen.classList.add('visible');
-  // Category colour gradient background
   screen.style.background = `linear-gradient(160deg, ${cat.color}dd 0%, ${cat.color}99 50%, #1a3a0a 100%)`;
   document.getElementById('focusTaskName').textContent = taskName || 'Focus Session';
   document.getElementById('focusSessionNum').textContent = focusSessionCount + 1;
   document.getElementById('focusProgressFill').style.width = '0%';
-  setSloth('focusSlothWrap', 'active', 200);
+  setSloth('focusSlothWrap', selectedFocusImage, 200);
   const q = QUOTES[Math.floor(Math.random()*QUOTES.length)];
   document.getElementById('focusQuote').textContent = q;
+  // Render image picker
+  const picker = document.getElementById('focusImagePicker');
+  if (picker) {
+    picker.innerHTML = FOCUS_IMAGES.map(img =>
+      `<div class="focus-img-opt${img.key===selectedFocusImage?' selected':''}" data-key="${img.key}" title="${img.label}">
+        <img src="${img.src}" style="height:44px;width:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,.3));">
+      </div>`
+    ).join('');
+    picker.querySelectorAll('.focus-img-opt').forEach(el => {
+      el.addEventListener('click', () => {
+        selectedFocusImage = el.dataset.key;
+        picker.querySelectorAll('.focus-img-opt').forEach(e=>e.classList.remove('selected'));
+        el.classList.add('selected');
+        setSloth('focusSlothWrap', selectedFocusImage, 200);
+      });
+    });
+  }
 }
 
 function closeFocusScreen() {
@@ -429,13 +449,20 @@ async function renderOverview() {
   document.getElementById('heroSub').textContent = heroSub;
   // Show business sloth when daily goal complete, else idle/active based on task
   if (!activeTask) {
-    setSloth('heroSlothWrap', goalPct >= 100 ? 'celebrate' : 'idle', 180);
+    setSloth('heroSlothWrap', goalPct >= 100 ? 'celebrate' : 'idle', 120);
     setSloth('companionSlothWrap', goalPct >= 100 ? 'celebrate' : 'locked', 140);
   }
 
   // Streak sidebar
   const streakEl = document.getElementById('streakText');
   if (streakEl) streakEl.textContent = streak > 0 ? `🔥 ${streak} day streak` : 'Keep it consistent';
+
+  // Todo stats
+  const allTodoItems = await getTodoItems();
+  const pendingTodos = allTodoItems.filter(i=>!i.completed&&i.source!=='flagged');
+  const completedTodayTodos = allTodoItems.filter(i=>i.completed&&i.completedDate===todayKey);
+  const overdueTodos = pendingTodos.filter(i=>getDueBucket(i.dueDate)==='overdue');
+  const todayTodos = pendingTodos.filter(i=>getDueBucket(i.dueDate)==='today');
 
   // Stat cards
   document.getElementById('statTotal').textContent = fmtMins(currentRange==='today' ? todayMins : totalMins);
@@ -452,6 +479,24 @@ async function renderOverview() {
   } else {
     document.getElementById('statMilestone').textContent = '🌲🌳🌿';
     document.getElementById('statMilestoneSub').textContent = 'Forest achieved!';
+  }
+
+  // Hero todo stats
+  const heroTodoEl = document.getElementById('heroTodoStats');
+  if (heroTodoEl) {
+    heroTodoEl.innerHTML = `
+      <div class="hero-todo-stat"><span class="hero-todo-num">${completedTodayTodos.length}</span><span class="hero-todo-label">Done today</span></div>
+      <div class="hero-todo-stat"><span class="hero-todo-num">${todayTodos.length}</span><span class="hero-todo-label">Due today</span></div>
+      <div class="hero-todo-stat ${overdueTodos.length>0?'overdue':''}"><span class="hero-todo-num">${overdueTodos.length}</span><span class="hero-todo-label">Overdue</span></div>`;
+  }
+
+  // Companion panel todo stats
+  const compTodoEl = document.getElementById('companionTodoStats');
+  if (compTodoEl) {
+    compTodoEl.innerHTML = `
+      <div class="companion-row"><span class="companion-label">✅ Done today</span><span class="companion-val">${completedTodayTodos.length}</span></div>
+      <div class="companion-row"><span class="companion-label">📅 Due today</span><span class="companion-val">${todayTodos.length}</span></div>
+      <div class="companion-row" style="${overdueTodos.length>0?'color:#ef4444':''}"><span class="companion-label">⚠️ Overdue</span><span class="companion-val" style="${overdueTodos.length>0?'color:#ef4444':''}">${overdueTodos.length}</span></div>`;
   }
 
   // Category cards
@@ -1574,7 +1619,7 @@ async function bootApp() {
     _cachedSettings = await getSettings();
     await loadActiveTask();
     populateTodoCatSelect();
-    setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 180);
+    setSloth('heroSlothWrap', activeTask ? 'active' : 'idle', 120);
     setSloth('companionSlothWrap', activeTask ? 'active' : 'idle', 140);
     setSloth('focusSlothWrap', 'active', 200);
     showSection('overview');

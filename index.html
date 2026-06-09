@@ -107,15 +107,15 @@
     .range-tab.active{background:#fff;color:var(--forest);box-shadow:var(--shadow);}
 
     /* ══ HERO SECTION ══ */
-    .hero-section{background:linear-gradient(140deg,var(--forest) 0%,var(--forest-mid) 55%,#4a7c2a 100%);border-radius:var(--radius);padding:28px 32px;margin-bottom:24px;position:relative;overflow:hidden;box-shadow:var(--shadow-lg);}
+    .hero-section{background:linear-gradient(140deg,var(--forest) 0%,var(--forest-mid) 55%,#4a7c2a 100%);border-radius:var(--radius);padding:18px 24px;margin-bottom:20px;position:relative;overflow:hidden;box-shadow:var(--shadow-lg);}
     .hero-section::before{content:'';position:absolute;top:-60px;right:-60px;width:240px;height:240px;background:rgba(255,255,255,0.03);border-radius:50%;}
     .hero-section::after{content:'';position:absolute;bottom:-40px;right:120px;width:180px;height:180px;background:rgba(232,160,32,0.06);border-radius:50%;}
     .hero-top{display:flex;align-items:flex-start;gap:24px;margin-bottom:20px;position:relative;z-index:1;}
     .hero-sloth-col{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px;}
     .hero-stage-badge{font-size:11px;font-weight:700;color:var(--gold-light);background:rgba(232,160,32,0.15);border:1px solid rgba(232,160,32,0.3);padding:3px 12px;border-radius:20px;white-space:nowrap;}
     .hero-text-col{flex:1;min-width:0;}
-    .hero-greeting{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#fff;letter-spacing:-.3px;margin-bottom:4px;}
-    .hero-sub{font-size:13px;color:rgba(255,255,255,0.65);line-height:1.5;margin-bottom:12px;}
+    .hero-greeting{font-family:'Plus Jakarta Sans',sans-serif;font-size:18px;font-weight:800;color:#fff;letter-spacing:-.3px;margin-bottom:2px;}
+    .hero-sub{font-size:12px;color:rgba(255,255,255,0.65);line-height:1.4;margin-bottom:8px;}
     .hero-stats-row{display:flex;gap:24px;flex-wrap:wrap;}
     .hero-stat{display:flex;flex-direction:column;gap:2px;}
     .hero-stat-val{font-family:'Plus Jakarta Sans',sans-serif;font-size:20px;font-weight:800;color:#fff;line-height:1;}
@@ -349,13 +349,13 @@
     .cal-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--grey);}
     .cal-legend-dot{width:10px;height:10px;border-radius:3px;}
     .cal-grid-wrap{display:flex;flex:1;overflow-y:auto;overflow-x:hidden;}
-    .cal-gutter{width:56px;flex-shrink:0;border-right:1px solid var(--grey-light);}
+    .cal-gutter{width:56px;flex-shrink:0;border-right:1px solid var(--grey-light);padding-top:72px;}
     .cal-gutter-slot{display:flex;align-items:flex-start;justify-content:flex-end;padding-right:8px;color:var(--grey);font-size:10px;font-variant-numeric:tabular-nums;box-sizing:border-box;}
     .cal-gutter-slot.hour-mark{color:var(--forest);font-weight:600;font-size:11px;}
     .cal-days{flex:1;display:grid;grid-template-columns:repeat(5,1fr);position:relative;}
     .cal-day-col{display:flex;flex-direction:column;border-right:1px solid var(--grey-light);}
     .cal-day-col:last-child{border-right:none;}
-    .cal-day-header{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1.5px solid var(--grey-light);padding:8px 6px;text-align:center;flex-shrink:0;}
+    .cal-day-header{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1.5px solid var(--grey-light);padding:8px 6px;text-align:center;flex-shrink:0;height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
     .cal-day-name{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--grey);font-weight:600;}
     .cal-day-num{font-family:'Plus Jakarta Sans',sans-serif;font-size:18px;font-weight:800;color:var(--forest);line-height:1.1;margin-top:2px;}
     .cal-day-num.today{background:var(--sage);color:#fff;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;}
@@ -618,6 +618,17 @@
       .habit-achievements-grid { grid-template-columns:1fr 1fr; }
     }
 
+
+    .hero-todo-row { display:flex; gap:14px; margin-top:8px; flex-wrap:wrap; }
+    .hero-todo-stat { display:flex; align-items:center; gap:5px; }
+    .hero-todo-num { font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:800; color:#fff; }
+    .hero-todo-label { font-size:10px; color:rgba(255,255,255,0.55); text-transform:uppercase; letter-spacing:.6px; font-weight:600; }
+    .hero-todo-stat.overdue .hero-todo-num { color:#fca5a5; }
+    .hero-todo-stat.overdue .hero-todo-label { color:#fca5a5; }
+    .focus-img-opt { cursor:pointer; padding:6px; border-radius:10px; border:2px solid rgba(255,255,255,0.15); transition:all .15s; }
+    .focus-img-opt:hover { border-color:rgba(255,255,255,0.5); background:rgba(255,255,255,0.1); }
+    .focus-img-opt.selected { border-color:var(--gold-light); background:rgba(232,160,32,0.2); }
+
     /* ══ SECTIONS ══ */
     .section-hidden{display:none;}
     .section-visible{display:block;}
@@ -670,6 +681,7 @@
     <div class="focus-progress-wrap">
       <div class="focus-progress-bar"><div class="focus-progress-fill" id="focusProgressFill" style="width:0%"></div></div>
     </div>
+    <div id="focusImagePicker" style="display:flex;gap:10px;margin-bottom:20px;justify-content:center;flex-wrap:wrap;"></div>
     <div class="focus-controls">
       <button class="focus-stop-btn" id="focusCancelBtn">✕ Cancel</button>
       <button class="focus-pause-btn" id="focusPauseBtn">⏸ Pause</button>
@@ -786,6 +798,7 @@
                 </div>
               </div>
             </div>
+            <div class="hero-todo-row" id="heroTodoStats"></div>
             <div class="hero-goal-section">
               <div class="hero-goal-header">
                 <div class="hero-goal-label">Daily Goal</div>
@@ -1015,6 +1028,7 @@
             <div class="companion-row"><span class="companion-label">🔥 Streak</span><span class="companion-val" id="companionStreak">0 days</span></div>
             <div class="companion-row"><span class="companion-label">✅ Sessions</span><span class="companion-val" id="companionSessions">0 today</span></div>
             <div class="companion-row"><span class="companion-label">⏱️ Total</span><span class="companion-val" id="companionTotal">0m</span></div>
+            <div id="companionTodoStats"></div>
           </div>
           <div class="companion-next">
             <div class="companion-next-label">🌳 Next Milestone</div>
